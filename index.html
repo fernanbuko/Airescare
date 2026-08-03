@@ -146,22 +146,8 @@ function svg(name, size=20, color="currentColor", strokeW=2){
 }
 
 /* ---------- Datos ---------- */
-const DEFAULT_EQUIPOS = [
-  { id:1, nombre:"Sala", marca:"LG Inverter 12k BTU", capacidad:"12,000 BTU", instalado:"10/01/2024", ultimo:"15/01/2025", proximo:"15/07/2025", estado:"Activo",
-    historial:[
-      {fecha:"15/01/2025", tipo:"Mantenimiento Preventivo", tecnico:"Elson S.", notas:"Limpieza de filtros, revisión de gas y funcionamiento."},
-      {fecha:"15/07/2024", tipo:"Mantenimiento Preventivo", tecnico:"Elson S.", notas:"Limpieza general."},
-      {fecha:"15/01/2024", tipo:"Mantenimiento Preventivo", tecnico:"Elson S.", notas:"Instalación del equipo."}
-    ]},
-  { id:2, nombre:"Dormitorio", marca:"Whirlpool Inverter 9k BTU", capacidad:"9,000 BTU", instalado:"05/03/2024", ultimo:"05/03/2025", proximo:"05/09/2025", estado:"Activo",
-    historial:[
-      {fecha:"05/03/2025", tipo:"Mantenimiento Preventivo", tecnico:"Elson S.", notas:"Limpieza de filtros y revisión general."}
-    ]},
-  { id:3, nombre:"Oficina", marca:"Mabe 24k BTU", capacidad:"24,000 BTU", instalado:"12/02/2023", ultimo:"12/02/2025", proximo:"12/08/2025", estado:"Activo",
-    historial:[
-      {fecha:"12/02/2025", tipo:"Mantenimiento Preventivo", tecnico:"Elson S.", notas:"Revisión de gas refrigerante."}
-    ]}
-];
+// La app arranca sin equipos registrados: el usuario los agrega desde cero.
+const DEFAULT_EQUIPOS = [];
 
 const CONSEJOS = [
   {icon:"filter", text:"Limpia los filtros cada 2 semanas para un mejor rendimiento."},
@@ -171,7 +157,7 @@ const CONSEJOS = [
 ];
 
 /* ---------- Estado / almacenamiento ---------- */
-const STORAGE_KEY = "airescare_equipos_v1";
+const STORAGE_KEY = "airescare_equipos_v2";
 function loadEquipos(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -199,6 +185,7 @@ function parseDMY(str){
   return new Date(y, m-1, d);
 }
 function diasRestantes(fechaStr){
+  if(!fechaStr) return null;
   const target = parseDMY(fechaStr);
   const today = new Date();
   today.setHours(0,0,0,0);
@@ -206,9 +193,13 @@ function diasRestantes(fechaStr){
   return diff;
 }
 function fechaLarga(str){
+  if(!str) return "Sin programar";
   const meses = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
   const d = parseDMY(str);
   return `${d.getDate()} de ${meses[d.getMonth()]} de ${d.getFullYear()}`;
+}
+function nextId(){
+  return state.equipos.reduce((max,e)=>Math.max(max,e.id),0) + 1;
 }
 
 function showToast(msg){
@@ -252,7 +243,7 @@ function bottomNav(active){
   ];
   return `<div class="bottomnav">${items.map(it=>{
     if(it.key==="add"){
-      return `<button class="navbtn-add" onclick="go('agendar')">${svg('plus',22,'#fff')}</button>`;
+      return `<button class="navbtn-add" onclick="go('agregarEquipo')">${svg('plus',22,'#fff')}</button>`;
     }
     const isActive = active===it.key;
     const target = it.key==="perfil" ? "home" : it.key;
@@ -266,8 +257,42 @@ function bottomNav(active){
 /* ---------- Pantallas ---------- */
 function screenHome(){
   const eqs = state.equipos;
-  const proximo = [...eqs].sort((a,b)=>diasRestantes(a.proximo)-diasRestantes(b.proximo))[0];
-  const dias = diasRestantes(proximo.proximo);
+
+  if(eqs.length === 0){
+    return `
+      <div class="screen">
+        ${statusBar()}
+        <div style="padding:8px 20px 0; display:flex; justify-content:flex-end;">
+          <button class="iconbtn">${svg('bell',22,'#0B2A45')}</button>
+        </div>
+        <div class="scroll" style="display:flex; flex-direction:column;">
+          <div style="font-size:22px; font-weight:800;">¡Hola!</div>
+          <div style="font-size:13.5px; color:var(--ink-soft); margin-top:4px; line-height:1.4;">
+            Registra tu primer aire acondicionado para empezar a recibir recordatorios de mantenimiento.
+          </div>
+          <div style="margin-top:22px; background:linear-gradient(135deg, var(--primary-deep), var(--primary)); border-radius:24px; height:140px; position:relative; display:flex; align-items:center; justify-content:center;">
+            ${svg('wind',64,'rgba(255,255,255,0.9)',1.5)}
+            <div style="position:absolute; top:16px; right:20px;">${svg('snowflake',22,'#BFE7F2')}</div>
+            <div style="position:absolute; bottom:14px; left:24px;">${svg('snowflake',14,'#BFE7F2')}</div>
+          </div>
+          <div class="card" style="margin-top:18px; text-align:center; padding:24px 16px;">
+            <div style="font-weight:700; font-size:14.5px;">Aún no tienes equipos registrados</div>
+            <div style="font-size:12.5px; color:var(--ink-soft); margin-top:6px; line-height:1.4;">
+              Agrega la marca, capacidad y fecha de instalación para llevar el control de su mantenimiento.
+            </div>
+            <button class="btn-primary" style="margin-top:16px;" onclick="go('agregarEquipo')">REGISTRAR MI PRIMER EQUIPO</button>
+          </div>
+        </div>
+        ${bottomNav("home")}
+      </div>`;
+  }
+
+  const conProximo = eqs.filter(e=>e.proximo);
+  const proximo = conProximo.length
+    ? [...conProximo].sort((a,b)=>diasRestantes(a.proximo)-diasRestantes(b.proximo))[0]
+    : null;
+  const dias = proximo ? diasRestantes(proximo.proximo) : null;
+
   return `
     <div class="screen">
       ${statusBar()}
@@ -275,7 +300,7 @@ function screenHome(){
         <button class="iconbtn">${svg('bell',22,'#0B2A45')}</button>
       </div>
       <div class="scroll">
-        <div style="font-size:22px; font-weight:800;">¡Hola, Elson!</div>
+        <div style="font-size:22px; font-weight:800;">¡Hola!</div>
         <div style="font-size:13.5px; color:var(--ink-soft); margin-top:4px; line-height:1.4;">
           Tus aires, siempre en las mejores condiciones.
         </div>
@@ -284,6 +309,7 @@ function screenHome(){
           <div style="position:absolute; top:16px; right:20px;">${svg('snowflake',22,'#BFE7F2')}</div>
           <div style="position:absolute; bottom:14px; left:24px;">${svg('snowflake',14,'#BFE7F2')}</div>
         </div>
+        ${proximo ? `
         <div class="card" style="margin-top:18px;">
           <div style="font-size:11px; font-weight:700; color:var(--primary); letter-spacing:.4px; text-transform:uppercase;">Próximo mantenimiento</div>
           <div style="font-size:15px; font-weight:700; margin-top:6px;">${proximo.nombre} – ${proximo.marca}</div>
@@ -294,13 +320,35 @@ function screenHome(){
             ${dias>=0 ? `(faltan ${dias} día${dias===1?'':'s'})` : `(venció hace ${Math.abs(dias)} día${Math.abs(dias)===1?'':'s'})`}
           </div>
           <button class="btn-primary" style="margin-top:14px;" onclick="go('equipos')">VER MIS EQUIPOS</button>
-        </div>
+        </div>` : `
+        <div class="card" style="margin-top:18px;">
+          <div style="font-size:13.5px; color:var(--ink-soft);">Ninguno de tus equipos tiene mantenimiento programado todavía.</div>
+          <button class="btn-primary" style="margin-top:14px;" onclick="go('equipos')">VER MIS EQUIPOS</button>
+        </div>`}
       </div>
       ${bottomNav("home")}
     </div>`;
 }
 
 function screenEquipos(){
+  if(state.equipos.length === 0){
+    return `
+      <div class="screen">
+        ${statusBar()}
+        ${topBar("Mis Equipos","home", `<button class="iconbtn" onclick="go('agregarEquipo')">${svg('plus',22,'#0B2A45')}</button>`)}
+        <div class="scroll" style="display:flex; flex-direction:column; align-items:center; text-align:center; padding-top:60px;">
+          <div style="width:64px;height:64px;border-radius:20px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center;">
+            ${svg('wind',30,'#0E63B0')}
+          </div>
+          <div style="font-weight:700; font-size:15px; margin-top:16px;">No tienes equipos registrados</div>
+          <div style="font-size:12.5px; color:var(--ink-soft); margin-top:6px; max-width:240px; line-height:1.4;">
+            Registra tu primer aire acondicionado para llevar el control de su mantenimiento.
+          </div>
+          <button class="btn-primary" style="margin-top:18px; max-width:220px;" onclick="go('agregarEquipo')">REGISTRAR EQUIPO</button>
+        </div>
+        ${bottomNav("equipos")}
+      </div>`;
+  }
   const rows = state.equipos.map(eq=>{
     return `<a class="equipo-row" href="javascript:void(0)" onclick="openEquipo(${eq.id})">
       <div class="card" style="display:flex; gap:12px; margin-bottom:12px;">
@@ -309,8 +357,8 @@ function screenEquipos(){
           <div style="font-weight:700; font-size:14.5px;">${eq.nombre}</div>
           <div style="font-size:12.5px; color:var(--ink-soft);">${eq.marca}</div>
           <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">Instalado: ${eq.instalado}</div>
-          <div style="font-size:11.5px; color:var(--ink-soft);">Último mantenimiento: ${eq.ultimo}</div>
-          <div class="chip" style="margin-top:8px;">Próximo: ${eq.proximo}</div>
+          <div style="font-size:11.5px; color:var(--ink-soft);">Último mantenimiento: ${eq.ultimo || "Aún sin mantenimiento"}</div>
+          <div class="chip" style="margin-top:8px;">${eq.proximo ? `Próximo: ${eq.proximo}` : "Sin mantenimiento programado"}</div>
         </div>
         <div style="align-self:center;">${svg('chevronRight',18,'#5B7A93')}</div>
       </div>
@@ -319,7 +367,7 @@ function screenEquipos(){
   return `
     <div class="screen">
       ${statusBar()}
-      ${topBar("Mis Equipos","home", `<button class="iconbtn" onclick="go('agendar')">${svg('plus',22,'#0B2A45')}</button>`)}
+      ${topBar("Mis Equipos","home", `<button class="iconbtn" onclick="go('agregarEquipo')">${svg('plus',22,'#0B2A45')}</button>`)}
       <div class="scroll">${rows}</div>
       ${bottomNav("equipos")}
     </div>`;
@@ -328,11 +376,11 @@ function screenEquipos(){
 function screenDetalle(){
   const eq = state.equipos.find(e=>e.id===state.equipoSelId) || state.equipos[0];
   const rows = [
-    ["Marca / Modelo", eq.marca.split(" ").slice(0,2).join(" ")],
-    ["Capacidad", eq.capacidad],
-    ["Fecha de instalación", eq.instalado],
-    ["Último mantenimiento", eq.ultimo],
-    ["Próximo mantenimiento", eq.proximo, true]
+    ["Marca / Modelo", eq.marca ? eq.marca.split(" ").slice(0,2).join(" ") : "Sin registrar"],
+    ["Capacidad", eq.capacidad || "Sin registrar"],
+    ["Fecha de instalación", eq.instalado || "Sin registrar"],
+    ["Último mantenimiento", eq.ultimo || "Aún sin mantenimiento"],
+    ["Próximo mantenimiento", eq.proximo || "Sin programar", true]
   ];
   return `
     <div class="screen">
@@ -365,7 +413,75 @@ function screenDetalle(){
     </div>`;
 }
 
+function screenAgregarEquipo(){
+  return `
+    <div class="screen">
+      ${statusBar()}
+      ${topBar("Registrar Equipo", state.equipos.length ? "equipos" : "home")}
+      <div class="scroll">
+        <label class="field-label">Nombre / Ubicación</label>
+        <input class="field-input" id="ne-nombre" type="text" placeholder="Ej: Sala, Dormitorio, Oficina" />
+
+        <label class="field-label">Marca y modelo</label>
+        <input class="field-input" id="ne-marca" type="text" placeholder="Ej: LG Inverter 12k BTU" />
+
+        <label class="field-label">Capacidad</label>
+        <input class="field-input" id="ne-capacidad" type="text" placeholder="Ej: 12,000 BTU" />
+
+        <label class="field-label">Fecha de instalación</label>
+        <input class="field-input" id="ne-instalado" type="date" />
+
+        <button class="btn-primary" style="margin-top:20px; margin-bottom:20px;" onclick="registrarEquipo()">GUARDAR EQUIPO</button>
+      </div>
+      ${bottomNav("equipos")}
+    </div>`;
+}
+
+function registrarEquipo(){
+  const nombre = document.getElementById("ne-nombre").value.trim();
+  const marca = document.getElementById("ne-marca").value.trim();
+  const capacidad = document.getElementById("ne-capacidad").value.trim();
+  const instaladoISO = document.getElementById("ne-instalado").value;
+
+  if(!nombre){
+    showToast("Ponle un nombre a tu equipo");
+    return;
+  }
+
+  const nuevo = {
+    id: nextId(),
+    nombre,
+    marca: marca || "Sin especificar",
+    capacidad: capacidad || "Sin especificar",
+    instalado: instaladoISO ? fechaISOaDMY(instaladoISO) : "-",
+    ultimo: null,
+    proximo: null,
+    estado: "Activo",
+    historial: []
+  };
+  state.equipos.push(nuevo);
+  saveEquipos(state.equipos);
+  state.equipoSelId = nuevo.id;
+  showToast("Equipo registrado");
+  go("detalle");
+}
+
 function screenAgendar(){
+  if(state.equipos.length === 0){
+    return `
+      <div class="screen">
+        ${statusBar()}
+        ${topBar("Programar Mantenimiento","home")}
+        <div class="scroll" style="display:flex; flex-direction:column; align-items:center; text-align:center; padding-top:60px;">
+          <div style="font-weight:700; font-size:14.5px;">Primero registra un equipo</div>
+          <div style="font-size:12.5px; color:var(--ink-soft); margin-top:6px; max-width:240px;">
+            Necesitas al menos un equipo para poder programarle un mantenimiento.
+          </div>
+          <button class="btn-primary" style="margin-top:16px; max-width:220px;" onclick="go('agregarEquipo')">REGISTRAR EQUIPO</button>
+        </div>
+        ${bottomNav("home")}
+      </div>`;
+  }
   const eq0 = state.equipoSelId ? state.equipos.find(e=>e.id===state.equipoSelId) : state.equipos[0];
   const opts = state.equipos.map(e=>`<option value="${e.id}" ${e.id===eq0.id?'selected':''}>${e.nombre} – ${e.marca}</option>`).join("");
   return `
@@ -470,7 +586,14 @@ function screenHistorial(){
     <div class="screen">
       ${statusBar()}
       ${topBar("Historial de Mantenimientos","home", svg('filter',18,'#0B2A45'))}
-      <div class="scroll">${rows || '<div style="color:var(--ink-soft); font-size:13px;">Sin registros todavía.</div>'}</div>
+      <div class="scroll">${rows || `
+        <div style="display:flex; flex-direction:column; align-items:center; text-align:center; padding-top:60px;">
+          ${svg('clock',36,'#5B7A93')}
+          <div style="font-weight:700; font-size:14.5px; margin-top:14px;">Sin registros todavía</div>
+          <div style="font-size:12.5px; color:var(--ink-soft); margin-top:6px; max-width:240px;">
+            Aquí verás el historial una vez que registres tu primer mantenimiento.
+          </div>
+        </div>`}</div>
       ${bottomNav("historial")}
     </div>`;
 }
@@ -496,6 +619,7 @@ function render(){
     home: screenHome,
     equipos: screenEquipos,
     detalle: screenDetalle,
+    agregarEquipo: screenAgregarEquipo,
     agendar: screenAgendar,
     notificacion: screenNotificacion,
     historial: screenHistorial,
