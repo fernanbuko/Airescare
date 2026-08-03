@@ -176,9 +176,22 @@ function saveEquipos(equipos){
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(equipos)); }catch(e){}
 }
 
+const PERFIL_KEY = "airescare_perfil_v1";
+function loadPerfil(){
+  try{
+    const raw = localStorage.getItem(PERFIL_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return { nombre: "", correo: "", telefono: "" };
+}
+function savePerfil(perfil){
+  try{ localStorage.setItem(PERFIL_KEY, JSON.stringify(perfil)); }catch(e){}
+}
+
 let state = {
   screen: "home",
   equipos: loadEquipos(),
+  perfil: loadPerfil(),
   equipoSelId: null,
   lastSaved: null,
   historialFiltro: null,
@@ -276,7 +289,7 @@ function screenHome(){
           <button class="iconbtn">${svg('bell',22,'#0B2A45')}</button>
         </div>
         <div class="scroll" style="display:flex; flex-direction:column;">
-          <div style="font-size:22px; font-weight:800;">¡Hola!</div>
+          <div style="font-size:22px; font-weight:800;">¡Hola${state.perfil.nombre ? ", " + state.perfil.nombre : ""}!</div>
           <div style="font-size:13.5px; color:var(--ink-soft); margin-top:4px; line-height:1.4;">
             Registra tu primer aire acondicionado para empezar a recibir recordatorios de mantenimiento.
           </div>
@@ -307,7 +320,7 @@ function screenHome(){
         <button class="iconbtn">${svg('bell',22,'#0B2A45')}</button>
       </div>
       <div class="scroll">
-        <div style="font-size:22px; font-weight:800;">¡Hola!</div>
+        <div style="font-size:22px; font-weight:800;">¡Hola${state.perfil.nombre ? ", " + state.perfil.nombre : ""}!</div>
         <div style="font-size:13.5px; color:var(--ink-soft); margin-top:4px; line-height:1.4;">
           Tus aires, siempre en las mejores condiciones.
         </div>
@@ -704,6 +717,8 @@ function screenPerfil(){
   const totalEquipos = state.equipos.length;
   const totalMantenimientos = state.equipos.reduce((sum,e)=>sum+e.historial.length, 0);
   const proximos = state.equipos.filter(e=>e.proximo).length;
+  const p = state.perfil;
+  const inicial = p.nombre ? p.nombre.trim().charAt(0).toUpperCase() : null;
 
   return `
     <div class="screen">
@@ -711,11 +726,11 @@ function screenPerfil(){
       <div class="scroll">
         <div style="display:flex; align-items:center; gap:14px;">
           <div style="width:56px;height:56px;border-radius:999px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center;">
-            ${svg('user',26,'#0E63B0')}
+            ${inicial ? `<span style="font-size:20px; font-weight:800; color:var(--primary);">${inicial}</span>` : svg('user',26,'#0E63B0')}
           </div>
           <div>
-            <div style="font-weight:800; font-size:16px;">Mi cuenta</div>
-            <div style="font-size:12.5px; color:var(--ink-soft);">Administra tus equipos y preferencias</div>
+            <div style="font-weight:800; font-size:16px;">${p.nombre || "Mi cuenta"}</div>
+            <div style="font-size:12.5px; color:var(--ink-soft);">${p.correo || "Administra tus equipos y preferencias"}</div>
           </div>
         </div>
 
@@ -732,6 +747,20 @@ function screenPerfil(){
             <div style="font-size:19px; font-weight:800; color:var(--primary);">${proximos}</div>
             <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">Programados</div>
           </div>
+        </div>
+
+        <div style="margin-top:22px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Datos personales</div>
+        <div class="card" style="margin-top:8px;">
+          <label class="field-label" style="margin-top:0;">Nombre</label>
+          <input class="field-input" id="pf-nombre" type="text" value="${p.nombre||""}" placeholder="Tu nombre" />
+
+          <label class="field-label">Correo (opcional)</label>
+          <input class="field-input" id="pf-correo" type="email" value="${p.correo||""}" placeholder="tu@correo.com" />
+
+          <label class="field-label">Teléfono (opcional)</label>
+          <input class="field-input" id="pf-telefono" type="tel" value="${p.telefono||""}" placeholder="Tu número" />
+
+          <button class="btn-primary" style="margin-top:14px;" onclick="guardarPerfil()">GUARDAR DATOS</button>
         </div>
 
         <div style="margin-top:22px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Preferencias</div>
@@ -770,6 +799,16 @@ function borrarTodo(){
     showToast("Datos borrados");
     go("home");
   }
+}
+
+function guardarPerfil(){
+  const nombre = document.getElementById("pf-nombre").value.trim();
+  const correo = document.getElementById("pf-correo").value.trim();
+  const telefono = document.getElementById("pf-telefono").value.trim();
+  state.perfil = { nombre, correo, telefono };
+  savePerfil(state.perfil);
+  showToast("Datos guardados");
+  render();
 }
 
 /* ---------- Render principal ---------- */
