@@ -766,7 +766,25 @@ function eliminarHistorialItem(equipoId, historialId){
   showConfirm("¿Eliminar este registro del historial? Esta acción no se puede deshacer.", () => {
     const eq = state.equipos.find(e=>e.id===Number(equipoId));
     if(eq){
+      const eliminado = eq.historial.find(h=>String(h.id)===String(historialId));
       eq.historial = eq.historial.filter(h=>String(h.id)!==String(historialId));
+
+      // Si el registro borrado era el que definía "próximo mantenimiento",
+      // recalcular con la fecha más reciente que quede en el historial (o dejarlo vacío).
+      if(eliminado && eq.proximo === eliminado.fecha){
+        if(eq.historial.length){
+          eq.proximo = eq.historial.reduce((max,h)=> parseDMY(h.fecha) > parseDMY(max) ? h.fecha : max, eq.historial[0].fecha);
+        } else {
+          eq.proximo = null;
+        }
+      }
+      // También actualizar "último mantenimiento" si era el que se borró
+      if(eliminado && eq.ultimo === eliminado.fecha){
+        eq.ultimo = eq.historial.length
+          ? eq.historial.reduce((min,h)=> parseDMY(h.fecha) < parseDMY(min) ? h.fecha : min, eq.historial[0].fecha)
+          : null;
+      }
+
       saveEquipos(state.equipos);
       showToast("Registro eliminado");
       render();
