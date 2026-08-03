@@ -41,6 +41,7 @@
     max-width:480px;
     margin:0 auto;
     min-height:100vh;
+    min-height:100dvh;
     background:var(--app-bg);
     display:flex;
     flex-direction:column;
@@ -56,11 +57,14 @@
   }
   .topbar .title{ font-weight:700; font-size:17px; color:var(--ink); }
   .iconbtn{ background:none; border:none; padding:6px; margin:-6px; display:flex; }
-  .scroll{ flex:1; overflow-y:auto; padding:0 20px 16px; -webkit-overflow-scrolling:touch; }
+  .scroll{ flex:1; overflow-y:auto; padding:0 20px calc(84px + env(safe-area-inset-bottom,0px)); -webkit-overflow-scrolling:touch; }
   .bottomnav{
     display:flex; justify-content:space-around; align-items:center;
     padding:10px 8px calc(env(safe-area-inset-bottom,14px) + 10px);
     border-top:1px solid var(--line); background:var(--card);
+    position:fixed; left:0; right:0; bottom:0;
+    max-width:480px; margin:0 auto;
+    z-index:40;
   }
   .navbtn{ background:none; border:none; display:flex; flex-direction:column; gap:2px; align-items:center; color:var(--ink-soft); font-size:10px; font-weight:600; }
   .navbtn.active, .navbtn.active svg{ color:var(--primary); }
@@ -595,7 +599,7 @@ function screenNotificacion(){
   const fecha = state.lastSaved ? fechaLarga(state.lastSaved.fecha) : "15 de Julio de 2025";
   return `
     <div class="screen">
-      <div style="flex:1; background:linear-gradient(180deg, #BFE0F2, #E7F2FA); display:flex; flex-direction:column; align-items:center; padding:60px 20px 0;">
+      <div style="flex:1; background:linear-gradient(180deg, #BFE0F2, #E7F2FA); display:flex; flex-direction:column; align-items:center; padding:60px 20px calc(84px + env(safe-area-inset-bottom,0px));">
         <div style="font-size:15px; font-weight:600;">Hoy</div>
         <div style="font-size:56px; font-weight:300; margin-top:4px;">${new Date().toTimeString().slice(0,5)}</div>
         <div style="margin-top:30px; width:100%; background:rgba(255,255,255,0.85); border-radius:18px; padding:16px;">
