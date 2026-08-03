@@ -180,7 +180,9 @@ let state = {
   screen: "home",
   equipos: loadEquipos(),
   equipoSelId: null,
-  lastSaved: null
+  lastSaved: null,
+  historialFiltro: null,
+  historialFiltroAbierto: false
 };
 
 function fechaISOaDMY(iso){
@@ -622,10 +624,14 @@ function screenNotificacion(){
 }
 
 function screenHistorial(){
-  const all = state.equipos.flatMap(eq=>eq.historial.map(h=>({...h, equipo:eq.nombre})))
+  const all = state.equipos.flatMap(eq=>eq.historial.map(h=>({...h, equipo:eq.nombre, equipoId:eq.id})))
     .sort((a,b)=>parseDMY(b.fecha)-parseDMY(a.fecha));
-  const rows = all.map(h=>`
-    <div class="card" style="display:flex; gap:10px; margin-bottom:10px;">
+
+  const filtro = state.historialFiltro;
+  const filtered = filtro ? all.filter(h=>h.equipoId===filtro) : all;
+
+  const rows = filtered.map(h=>`
+    <div class="card" style="display:flex; gap:10px; margin-bottom:10px; cursor:pointer;" onclick="verEquipoDesdeHistorial(${h.equipoId})">
       ${svg('check',20,'#28A88B')}
       <div style="flex:1;">
         <div style="display:flex; justify-content:space-between;">
@@ -637,20 +643,48 @@ function screenHistorial(){
         <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">Notas: ${h.notas}</div>
       </div>
     </div>`).join("");
+
+  const filtroOpts = `<option value="">Todos los equipos</option>` +
+    state.equipos.map(eq=>`<option value="${eq.id}" ${filtro===eq.id?'selected':''}>${eq.nombre}</option>`).join("");
+
+  const filtroBar = all.length ? `
+    <div style="padding:0 20px 12px;">
+      <select class="field-input" style="margin-top:0;" onchange="cambiarFiltroHistorial(this.value)">
+        ${filtroOpts}
+      </select>
+    </div>` : "";
+
   return `
     <div class="screen">
-      ${topBar("Historial de Mantenimientos","home", svg('filter',18,'#0B2A45'))}
-      <div class="scroll">${rows || `
+      ${topBar("Historial de Mantenimientos","home", `<button class="iconbtn" onclick="toggleFiltroHistorial()">${svg('filter',18, filtro? 'var(--primary)':'#0B2A45')}</button>`)}
+      ${state.historialFiltroAbierto ? filtroBar : ""}
+      <div class="scroll">${filtered.length ? rows : `
         <div style="display:flex; flex-direction:column; align-items:center; text-align:center; padding-top:60px;">
           ${svg('clock',36,'#5B7A93')}
-          <div style="font-weight:700; font-size:14.5px; margin-top:14px;">Sin registros todavía</div>
+          <div style="font-weight:700; font-size:14.5px; margin-top:14px;">${all.length? 'Sin registros para este equipo' : 'Sin registros todavía'}</div>
           <div style="font-size:12.5px; color:var(--ink-soft); margin-top:6px; max-width:240px;">
-            Aquí verás el historial una vez que registres tu primer mantenimiento.
+            ${all.length? 'Prueba cambiando el filtro de arriba.' : 'Aquí verás el historial una vez que registres tu primer mantenimiento.'}
           </div>
         </div>`}</div>
       ${bottomNav("historial")}
     </div>`;
 }
+
+function toggleFiltroHistorial(){
+  state.historialFiltroAbierto = !state.historialFiltroAbierto;
+  render();
+}
+
+function cambiarFiltroHistorial(value){
+  state.historialFiltro = value ? Number(value) : null;
+  render();
+}
+
+function verEquipoDesdeHistorial(equipoId){
+  state.equipoSelId = equipoId;
+  go("detalle");
+}
+
 
 function screenConsejos(){
   const rows = CONSEJOS.map(c=>`
