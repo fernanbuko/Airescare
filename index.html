@@ -49,14 +49,10 @@
   button, select, textarea, input{ font-family:inherit; }
   button{ cursor:pointer; }
   .screen{ display:flex; flex-direction:column; flex:1; min-height:0; }
-  .statusbar{
-    display:flex; justify-content:space-between; padding:10px 20px 2px;
-    font-size:13px; font-weight:600; color:var(--ink);
-    padding-top: calc(env(safe-area-inset-top, 10px) + 6px);
-  }
   .topbar{
     display:flex; align-items:center; justify-content:space-between;
-    padding:6px 16px 14px;
+    padding:14px 16px 14px;
+    padding-top: calc(env(safe-area-inset-top, 14px) + 10px);
   }
   .topbar .title{ font-weight:700; font-size:17px; color:var(--ink); }
   .iconbtn{ background:none; border:none; padding:6px; margin:-6px; display:flex; }
@@ -222,9 +218,6 @@ function openEquipo(id){
 }
 
 /* ---------- Render de layout compartido ---------- */
-function statusBar(){
-  return `<div class="statusbar"><span>9:41</span><span>•••• Wi‑Fi 🔋</span></div>`;
-}
 function topBar(title, showBack, rightHtml){
   return `
     <div class="topbar">
@@ -261,8 +254,7 @@ function screenHome(){
   if(eqs.length === 0){
     return `
       <div class="screen">
-        ${statusBar()}
-        <div style="padding:8px 20px 0; display:flex; justify-content:flex-end;">
+        <div style="padding: calc(env(safe-area-inset-top, 14px) + 14px) 20px 0; display:flex; justify-content:flex-end;">
           <button class="iconbtn">${svg('bell',22,'#0B2A45')}</button>
         </div>
         <div class="scroll" style="display:flex; flex-direction:column;">
@@ -295,8 +287,7 @@ function screenHome(){
 
   return `
     <div class="screen">
-      ${statusBar()}
-      <div style="padding:8px 20px 0; display:flex; justify-content:flex-end;">
+      <div style="padding: calc(env(safe-area-inset-top, 14px) + 14px) 20px 0; display:flex; justify-content:flex-end;">
         <button class="iconbtn">${svg('bell',22,'#0B2A45')}</button>
       </div>
       <div class="scroll">
@@ -334,7 +325,6 @@ function screenEquipos(){
   if(state.equipos.length === 0){
     return `
       <div class="screen">
-        ${statusBar()}
         ${topBar("Mis Equipos","home", `<button class="iconbtn" onclick="go('agregarEquipo')">${svg('plus',22,'#0B2A45')}</button>`)}
         <div class="scroll" style="display:flex; flex-direction:column; align-items:center; text-align:center; padding-top:60px;">
           <div style="width:64px;height:64px;border-radius:20px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center;">
@@ -366,7 +356,6 @@ function screenEquipos(){
   }).join("");
   return `
     <div class="screen">
-      ${statusBar()}
       ${topBar("Mis Equipos","home", `<button class="iconbtn" onclick="go('agregarEquipo')">${svg('plus',22,'#0B2A45')}</button>`)}
       <div class="scroll">${rows}</div>
       ${bottomNav("equipos")}
@@ -384,7 +373,6 @@ function screenDetalle(){
   ];
   return `
     <div class="screen">
-      ${statusBar()}
       ${topBar("Detalle del Equipo","equipos", svg('edit',19,'#0B2A45'))}
       <div class="scroll">
         <div style="display:flex; gap:14px; align-items:center;">
@@ -416,7 +404,6 @@ function screenDetalle(){
 function screenAgregarEquipo(){
   return `
     <div class="screen">
-      ${statusBar()}
       ${topBar("Registrar Equipo", state.equipos.length ? "equipos" : "home")}
       <div class="scroll">
         <label class="field-label">Nombre / Ubicación</label>
@@ -470,7 +457,6 @@ function screenAgendar(){
   if(state.equipos.length === 0){
     return `
       <div class="screen">
-        ${statusBar()}
         ${topBar("Programar Mantenimiento","home")}
         <div class="scroll" style="display:flex; flex-direction:column; align-items:center; text-align:center; padding-top:60px;">
           <div style="font-weight:700; font-size:14.5px;">Primero registra un equipo</div>
@@ -486,7 +472,6 @@ function screenAgendar(){
   const opts = state.equipos.map(e=>`<option value="${e.id}" ${e.id===eq0.id?'selected':''}>${e.nombre} – ${e.marca}</option>`).join("");
   return `
     <div class="screen">
-      ${statusBar()}
       ${topBar("Programar Mantenimiento","equipos")}
       <div class="scroll">
         <label class="field-label">Equipo</label>
@@ -584,7 +569,6 @@ function screenHistorial(){
     </div>`).join("");
   return `
     <div class="screen">
-      ${statusBar()}
       ${topBar("Historial de Mantenimientos","home", svg('filter',18,'#0B2A45'))}
       <div class="scroll">${rows || `
         <div style="display:flex; flex-direction:column; align-items:center; text-align:center; padding-top:60px;">
@@ -606,7 +590,6 @@ function screenConsejos(){
     </div>`).join("");
   return `
     <div class="screen">
-      ${statusBar()}
       ${topBar("Consejos","home")}
       <div class="scroll">${rows}</div>
       ${bottomNav("")}
