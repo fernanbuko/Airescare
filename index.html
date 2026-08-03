@@ -183,6 +183,11 @@ function fechaISOaDMY(iso){
   const [y,m,d] = iso.split("-");
   return `${d}/${m}/${y}`;
 }
+function fechaDMYaISO(dmy){
+  if(!dmy || dmy.indexOf("/")===-1) return "";
+  const [d,m,y] = dmy.split("/");
+  return `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
+}
 function parseDMY(str){
   const [d,m,y] = str.split("/").map(Number);
   return new Date(y, m-1, d);
@@ -376,7 +381,7 @@ function screenDetalle(){
   ];
   return `
     <div class="screen">
-      ${topBar("Detalle del Equipo","equipos", svg('edit',19,'#0B2A45'))}
+      ${topBar("Detalle del Equipo","equipos", `<button class="iconbtn" onclick="go('editarEquipo')">${svg('edit',19,'#0B2A45')}</button>`)}
       <div class="scroll">
         <div style="display:flex; gap:14px; align-items:center;">
           <div style="width:56px;height:56px;border-radius:16px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center;">
@@ -456,6 +461,62 @@ function registrarEquipo(){
   go("detalle");
 }
 
+function screenEditarEquipo(){
+  const eq = state.equipos.find(e=>e.id===state.equipoSelId) || state.equipos[0];
+  return `
+    <div class="screen">
+      ${topBar("Editar Equipo","detalle")}
+      <div class="scroll">
+        <label class="field-label">Nombre / Ubicación</label>
+        <input class="field-input" id="ee-nombre" type="text" value="${eq.nombre||""}" placeholder="Ej: Sala, Dormitorio, Oficina" />
+
+        <label class="field-label">Marca y modelo</label>
+        <input class="field-input" id="ee-marca" type="text" value="${(eq.marca&&eq.marca!=='Sin especificar')?eq.marca:""}" placeholder="Ej: LG Inverter 12k BTU" />
+
+        <label class="field-label">Capacidad</label>
+        <input class="field-input" id="ee-capacidad" type="text" value="${(eq.capacidad&&eq.capacidad!=='Sin especificar')?eq.capacidad:""}" placeholder="Ej: 12,000 BTU" />
+
+        <label class="field-label">Fecha de instalación</label>
+        <input class="field-input" id="ee-instalado" type="date" value="${fechaDMYaISO(eq.instalado)}" />
+
+        <button class="btn-primary" style="margin-top:20px;" onclick="guardarEdicionEquipo()">GUARDAR CAMBIOS</button>
+        <button class="btn-outline" style="margin-top:10px; margin-bottom:20px; border-color:#D64545; color:#D64545;" onclick="eliminarEquipo()">ELIMINAR EQUIPO</button>
+      </div>
+      ${bottomNav("equipos")}
+    </div>`;
+}
+
+function guardarEdicionEquipo(){
+  const eq = state.equipos.find(e=>e.id===state.equipoSelId);
+  if(!eq) return;
+  const nombre = document.getElementById("ee-nombre").value.trim();
+  const marca = document.getElementById("ee-marca").value.trim();
+  const capacidad = document.getElementById("ee-capacidad").value.trim();
+  const instaladoISO = document.getElementById("ee-instalado").value;
+
+  if(!nombre){
+    showToast("Ponle un nombre a tu equipo");
+    return;
+  }
+
+  eq.nombre = nombre;
+  eq.marca = marca || "Sin especificar";
+  eq.capacidad = capacidad || "Sin especificar";
+  eq.instalado = instaladoISO ? fechaISOaDMY(instaladoISO) : eq.instalado;
+  saveEquipos(state.equipos);
+  showToast("Cambios guardados");
+  go("detalle");
+}
+
+function eliminarEquipo(){
+  if(confirm("¿Eliminar este equipo y todo su historial? Esta acción no se puede deshacer.")){
+    state.equipos = state.equipos.filter(e=>e.id!==state.equipoSelId);
+    saveEquipos(state.equipos);
+    showToast("Equipo eliminado");
+    go("equipos");
+  }
+}
+
 function screenAgendar(){
   if(state.equipos.length === 0){
     return `
@@ -522,8 +583,9 @@ function guardarMantenimiento(){
     saveEquipos(state.equipos);
   }
   state.lastSaved = {equipoId, fecha};
+  state.equipoSelId = equipoId;
   showToast("Mantenimiento guardado");
-  go("notificacion");
+  go("detalle");
 }
 
 function screenNotificacion(){
@@ -679,6 +741,7 @@ function render(){
     equipos: screenEquipos,
     detalle: screenDetalle,
     agregarEquipo: screenAgregarEquipo,
+    editarEquipo: screenEditarEquipo,
     agendar: screenAgendar,
     notificacion: screenNotificacion,
     historial: screenHistorial,
