@@ -239,7 +239,7 @@ function bottomNav(active){
       return `<button class="navbtn-add" onclick="go('agregarEquipo')">${svg('plus',22,'#fff')}</button>`;
     }
     const isActive = active===it.key;
-    const target = it.key==="perfil" ? "home" : it.key;
+    const target = it.key;
     return `<button class="navbtn ${isActive?'active':''}" onclick="go('${target}')">
       ${svg(it.icon,20, isActive?'#0E63B0':'#5B7A93')}
       <span>${it.label}</span>
@@ -596,6 +596,78 @@ function screenConsejos(){
     </div>`;
 }
 
+function screenPerfil(){
+  const totalEquipos = state.equipos.length;
+  const totalMantenimientos = state.equipos.reduce((sum,e)=>sum+e.historial.length, 0);
+  const proximos = state.equipos.filter(e=>e.proximo).length;
+
+  return `
+    <div class="screen">
+      ${topBar("Perfil","home")}
+      <div class="scroll">
+        <div style="display:flex; align-items:center; gap:14px;">
+          <div style="width:56px;height:56px;border-radius:999px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center;">
+            ${svg('user',26,'#0E63B0')}
+          </div>
+          <div>
+            <div style="font-weight:800; font-size:16px;">Mi cuenta</div>
+            <div style="font-size:12.5px; color:var(--ink-soft);">Administra tus equipos y preferencias</div>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:10px; margin-top:20px;">
+          <div class="card" style="flex:1; text-align:center; padding:14px 8px;">
+            <div style="font-size:19px; font-weight:800; color:var(--primary);">${totalEquipos}</div>
+            <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">Equipos</div>
+          </div>
+          <div class="card" style="flex:1; text-align:center; padding:14px 8px;">
+            <div style="font-size:19px; font-weight:800; color:var(--primary);">${totalMantenimientos}</div>
+            <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">Mantenimientos</div>
+          </div>
+          <div class="card" style="flex:1; text-align:center; padding:14px 8px;">
+            <div style="font-size:19px; font-weight:800; color:var(--primary);">${proximos}</div>
+            <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">Programados</div>
+          </div>
+        </div>
+
+        <div style="margin-top:22px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Preferencias</div>
+        <div class="card" style="margin-top:8px; padding:4px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:14px;">
+            <span style="font-size:13.5px;">Notificaciones de mantenimiento</span>
+            <span class="chip">Activadas</span>
+          </div>
+          <div style="border-top:1px solid var(--line);"></div>
+          <button onclick="go('consejos')" style="width:100%; background:none; border:none; display:flex; justify-content:space-between; align-items:center; padding:14px; text-align:left;">
+            <span style="font-size:13.5px; color:var(--ink);">Consejos de cuidado</span>
+            ${svg('chevronRight',18,'#5B7A93')}
+          </button>
+        </div>
+
+        <div style="margin-top:22px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Datos</div>
+        <div class="card" style="margin-top:8px;">
+          <div style="font-size:12.5px; color:var(--ink-soft); line-height:1.4;">
+            Tus equipos y su historial se guardan solo en este dispositivo.
+          </div>
+          <button class="btn-outline" style="margin-top:12px; border-color:#D64545; color:#D64545;" onclick="borrarTodo()">BORRAR TODOS LOS DATOS</button>
+        </div>
+
+        <div style="text-align:center; margin-top:22px; margin-bottom:8px; font-size:11.5px; color:var(--ink-soft);">
+          AiresCare · versión 1.0
+        </div>
+      </div>
+      ${bottomNav("perfil")}
+    </div>`;
+}
+
+function borrarTodo(){
+  if(confirm("¿Borrar todos los equipos y su historial? Esta acción no se puede deshacer.")){
+    state.equipos = [];
+    saveEquipos(state.equipos);
+    showToast("Datos borrados");
+    go("home");
+  }
+}
+
 /* ---------- Render principal ---------- */
 function render(){
   const map = {
@@ -606,7 +678,8 @@ function render(){
     agendar: screenAgendar,
     notificacion: screenNotificacion,
     historial: screenHistorial,
-    consejos: screenConsejos
+    consejos: screenConsejos,
+    perfil: screenPerfil
   };
   const fn = map[state.screen] || screenHome;
   document.getElementById("app").innerHTML = fn();
