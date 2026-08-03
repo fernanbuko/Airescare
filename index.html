@@ -481,7 +481,7 @@ function screenAgendar(){
         <select class="field-input" id="f-equipo">${opts}</select>
 
         <label class="field-label">Fecha del mantenimiento</label>
-        <input class="field-input" type="date" id="f-fecha" value="2025-07-15" />
+        <input class="field-input" type="date" id="f-fecha" value="${new Date().toISOString().slice(0,10)}" />
 
         <label class="field-label">Tipo de mantenimiento</label>
         <select class="field-input" id="f-tipo">
@@ -512,7 +512,8 @@ function guardarMantenimiento(){
   const tipo = document.getElementById("f-tipo").value;
   const tecnico = document.getElementById("f-tecnico").value;
   const notas = document.getElementById("f-notas").value;
-  const fecha = fechaISO ? fechaISOaDMY(fechaISO) : "15/07/2025";
+  const hoyISO = new Date().toISOString().slice(0,10);
+  const fecha = fechaISOaDMY(fechaISO || hoyISO);
 
   const eq = state.equipos.find(e=>e.id===equipoId);
   if(eq){
