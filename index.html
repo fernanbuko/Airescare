@@ -111,6 +111,24 @@
     background:#fff; color:var(--primary-deep); border:none; border-radius:8px;
     padding:8px 14px; font-weight:700; font-size:13px; flex-shrink:0;
   }
+
+  .confirm-overlay{
+    position:fixed; inset:0; background:rgba(11,42,69,0.45);
+    display:none; align-items:center; justify-content:center;
+    z-index:100; padding:24px;
+  }
+  .confirm-overlay.show{ display:flex; }
+  .confirm-box{
+    background:#fff; border-radius:18px; padding:22px 20px; max-width:340px; width:100%;
+    box-shadow:0 20px 40px rgba(11,42,69,0.25);
+  }
+  .confirm-box p{ margin:0 0 20px; font-size:14px; color:var(--ink); line-height:1.5; }
+  .confirm-actions{ display:flex; gap:10px; justify-content:flex-end; }
+  .confirm-actions button{
+    border:none; border-radius:10px; padding:10px 16px; font-weight:700; font-size:13.5px;
+  }
+  .confirm-cancel{ background:var(--chip-bg); color:var(--ink); }
+  .confirm-accept{ background:#D64545; color:#fff; }
 </style>
 </head>
 <body>
@@ -119,6 +137,15 @@
 <div class="install-banner" id="installBanner">
   <span>Instala AiresCare en tu pantalla de inicio</span>
   <button id="installBtn">Instalar</button>
+</div>
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-box">
+    <p id="confirmMessage"></p>
+    <div class="confirm-actions">
+      <button class="confirm-cancel" id="confirmCancelBtn">Cancelar</button>
+      <button class="confirm-accept" id="confirmAcceptBtn">Eliminar</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -249,11 +276,33 @@ function showToast(msg){
   showToast._t = setTimeout(()=>t.classList.remove("show"), 2200);
 }
 
+function showConfirm(message, onAccept){
+  const overlay = document.getElementById("confirmOverlay");
+  document.getElementById("confirmMessage").textContent = message;
+  overlay.classList.add("show");
+
+  const acceptBtn = document.getElementById("confirmAcceptBtn");
+  const cancelBtn = document.getElementById("confirmCancelBtn");
+
+  const cleanup = () => {
+    overlay.classList.remove("show");
+    acceptBtn.onclick = null;
+    cancelBtn.onclick = null;
+  };
+  acceptBtn.onclick = () => { cleanup(); onAccept(); };
+  cancelBtn.onclick = () => { cleanup(); };
+}
+
 /* ---------- Navegación ---------- */
-function go(screen){
+function go(screen, replace){
   state.screen = screen;
   render();
   document.querySelector(".scroll") && (document.querySelector(".scroll").scrollTop = 0);
+  if(replace){
+    history.replaceState({screen}, "", "");
+  } else {
+    history.pushState({screen}, "", "");
+  }
 }
 function openEquipo(id){
   state.equipoSelId = id;
@@ -540,12 +589,12 @@ function guardarEdicionEquipo(){
 }
 
 function eliminarEquipo(){
-  if(confirm("¿Eliminar este equipo y todo su historial? Esta acción no se puede deshacer.")){
+  showConfirm("¿Eliminar este equipo y todo su historial? Esta acción no se puede deshacer.", () => {
     state.equipos = state.equipos.filter(e=>e.id!==state.equipoSelId);
     saveEquipos(state.equipos);
     showToast("Equipo eliminado");
     go("equipos");
-  }
+  });
 }
 
 function screenAgendar(){
@@ -714,14 +763,15 @@ function verEquipoDesdeHistorial(equipoId){
 }
 
 function eliminarHistorialItem(equipoId, historialId){
-  if(!confirm("¿Eliminar este registro del historial? Esta acción no se puede deshacer.")) return;
-  const eq = state.equipos.find(e=>e.id===Number(equipoId));
-  if(eq){
-    eq.historial = eq.historial.filter(h=>String(h.id)!==String(historialId));
-    saveEquipos(state.equipos);
-    showToast("Registro eliminado");
-    render();
-  }
+  showConfirm("¿Eliminar este registro del historial? Esta acción no se puede deshacer.", () => {
+    const eq = state.equipos.find(e=>e.id===Number(equipoId));
+    if(eq){
+      eq.historial = eq.historial.filter(h=>String(h.id)!==String(historialId));
+      saveEquipos(state.equipos);
+      showToast("Registro eliminado");
+      render();
+    }
+  });
 }
 
 
@@ -819,12 +869,12 @@ function screenPerfil(){
 }
 
 function borrarTodo(){
-  if(confirm("¿Borrar todos los equipos y su historial? Esta acción no se puede deshacer.")){
+  showConfirm("¿Borrar todos los equipos y su historial? Esta acción no se puede deshacer.", () => {
     state.equipos = [];
     saveEquipos(state.equipos);
     showToast("Datos borrados");
     go("home");
-  }
+  });
 }
 
 function guardarPerfil(){
@@ -855,6 +905,14 @@ function render(){
   document.getElementById("app").innerHTML = fn();
 }
 render();
+history.replaceState({screen: state.screen}, "", "");
+
+window.addEventListener("popstate", (e) => {
+  const targetScreen = (e.state && e.state.screen) ? e.state.screen : "home";
+  state.screen = targetScreen;
+  render();
+  document.querySelector(".scroll") && (document.querySelector(".scroll").scrollTop = 0);
+});
 
 /* ---------- Service worker + instalación ---------- */
 if("serviceWorker" in navigator){
