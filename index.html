@@ -335,7 +335,11 @@ let state = {
   lastSaved: null,
   historialFiltro: null,
   historialFiltroAbierto: false,
-  historialEditId: null
+  historialEditId: null,
+  agendaYear: null,
+  agendaMonth: null,
+  agendaDiaSel: null,
+  prefillFecha: null
 };
 
 function fechaISOaDMY(iso){
@@ -873,6 +877,8 @@ function screenAgendar(){
       </div>`;
   }
   const eq0 = state.equipoSelId ? state.equipos.find(e=>e.id===state.equipoSelId) : state.equipos[0];
+  const fechaPrefill = state.prefillFecha || new Date().toISOString().slice(0,10);
+  state.prefillFecha = null;
   const opts = state.equipos.map(e=>`<option value="${e.id}" ${e.id===eq0.id?'selected':''}>${e.nombre} – ${e.marca}</option>`).join("");
   return `
     <div class="screen">
@@ -882,7 +888,7 @@ function screenAgendar(){
         <select class="field-input" id="f-equipo">${opts}</select>
 
         <label class="field-label">Fecha del mantenimiento</label>
-        <input class="field-input" type="date" id="f-fecha" value="${new Date().toISOString().slice(0,10)}" />
+        <input class="field-input" type="date" id="f-fecha" value="${fechaPrefill}" />
 
         <label class="field-label">Tipo de mantenimiento</label>
         <select class="field-input" id="f-tipo">
@@ -969,54 +975,127 @@ function screenNotificacion(){
     </div>`;
 }
 
+const MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+const DIAS_SEMANA_ES = ["D","L","M","M","J","V","S"];
+const DIAS_SEMANA_LARGO_ES = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+
+function isoHoy(){
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+function mantenimientosPorFecha(){
+  const mapa = {};
+  state.equipos.forEach(eq=>{
+    if(!eq.proximo) return;
+    const iso = fechaDMYaISO(eq.proximo);
+    if(!mapa[iso]) mapa[iso] = [];
+    mapa[iso].push(eq);
+  });
+  return mapa;
+}
+
+function generarCeldasCalendario(year, month){
+  const primerDia = new Date(year, month, 1);
+  const startWeekday = primerDia.getDay();
+  const diasEnMes = new Date(year, month+1, 0).getDate();
+  const celdas = [];
+  for(let i=0;i<startWeekday;i++) celdas.push(null);
+  for(let d=1; d<=diasEnMes; d++){
+    celdas.push({ day:d, iso:`${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}` });
+  }
+  while(celdas.length % 7 !== 0) celdas.push(null);
+  return celdas;
+}
+
+function cambiarMesAgenda(delta){
+  let m = state.agendaMonth + delta;
+  let y = state.agendaYear;
+  if(m < 0){ m = 11; y--; }
+  if(m > 11){ m = 0; y++; }
+  state.agendaMonth = m;
+  state.agendaYear = y;
+  render();
+}
+
+function seleccionarDiaAgenda(iso){
+  state.agendaDiaSel = iso;
+  render();
+}
+
+function agendarDesdeAgenda(){
+  state.prefillFecha = state.agendaDiaSel;
+  go("agendar");
+}
+
 function screenAgenda(){
-  const pendientes = state.equipos
-    .filter(eq=>eq.proximo)
-    .map(eq=>({...eq, dias: diasRestantes(eq.proximo)}))
-    .sort((a,b)=>parseDMY(a.proximo)-parseDMY(b.proximo));
+  const hoyIso = isoHoy();
+  if(!state.agendaYear){ const d = new Date(); state.agendaYear = d.getFullYear(); state.agendaMonth = d.getMonth(); }
+  if(!state.agendaDiaSel) state.agendaDiaSel = hoyIso;
 
-  const rows = pendientes.map(eq=>{
-    const tieneTelefono = !!limpiarTelefono(eq.telefono);
-    let etiqueta, colorEtiqueta;
-    if(eq.dias < 0){ etiqueta = `Venció hace ${Math.abs(eq.dias)} día${Math.abs(eq.dias)===1?'':'s'}`; colorEtiqueta = "#D64545"; }
-    else if(eq.dias === 0){ etiqueta = "Hoy"; colorEtiqueta = "#D64545"; }
-    else if(eq.dias === 1){ etiqueta = "Mañana"; colorEtiqueta = "var(--warn)"; }
-    else { etiqueta = `En ${eq.dias} días`; colorEtiqueta = "var(--mint)"; }
+  const mapa = mantenimientosPorFecha();
+  const celdas = generarCeldasCalendario(state.agendaYear, state.agendaMonth);
 
+  const celdasHtml = celdas.map(c=>{
+    if(!c) return `<div></div>`;
+    const tieneEventos = !!mapa[c.iso];
+    const esHoy = c.iso === hoyIso;
+    const esSel = c.iso === state.agendaDiaSel;
+    let bg = "transparent", color = "var(--ink)";
+    if(esSel){ bg = "var(--primary)"; color = "#fff"; }
+    else if(esHoy){ bg = "var(--chip-bg)"; color = "var(--primary)"; }
     return `
-    <div class="card" style="margin-bottom:12px;">
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; cursor:pointer;" onclick="openEquipo(${eq.id})">
-        <div>
-          <div style="font-weight:700; font-size:14.5px;">${eq.nombre}${eq.cliente ? ` · ${eq.cliente}` : ""}</div>
-          <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${eq.marca}</div>
-          <div style="display:flex; align-items:center; gap:6px; margin-top:6px; font-size:12.5px;">
-            ${svg('calendar',14,'var(--ink-soft)')} ${eq.proximo}
-          </div>
-        </div>
-        <span style="background:${colorEtiqueta}1a; color:${colorEtiqueta}; font-size:11px; font-weight:700; padding:4px 10px; border-radius:999px; white-space:nowrap;">${etiqueta}</span>
+      <button onclick="seleccionarDiaAgenda('${c.iso}')" style="background:${bg}; color:${color}; border:none; border-radius:12px; height:42px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:13px; font-weight:${esSel||esHoy?'800':'600'}; position:relative; cursor:pointer;">
+        ${c.day}
+        ${tieneEventos ? `<span style="position:absolute; bottom:4px; width:4px; height:4px; border-radius:999px; background:${esSel?'#fff':'var(--mint)'};"></span>` : ""}
+      </button>`;
+  }).join("");
+
+  const eventosDia = mapa[state.agendaDiaSel] || [];
+  const [selY, selM, selD] = state.agendaDiaSel.split("-").map(Number);
+  const selDate = new Date(selY, selM-1, selD);
+  const nombreDiaSel = `${DIAS_SEMANA_LARGO_ES[selDate.getDay()]} ${selD} de ${MESES_ES[selM-1].toLowerCase()}`;
+
+  const eventosHtml = eventosDia.map(eq=>{
+    const tieneTelefono = !!limpiarTelefono(eq.telefono);
+    return `
+    <div class="card" style="margin-bottom:10px;">
+      <div style="cursor:pointer;" onclick="openEquipo(${eq.id})">
+        <div style="font-weight:700; font-size:14px;">${eq.nombre}${eq.cliente ? ` · ${eq.cliente}` : ""}</div>
+        <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${eq.marca}</div>
       </div>
       ${tieneTelefono ? `
-      <div style="display:flex; gap:8px; margin-top:12px;">
-        <a href="tel:${limpiarTelefono(eq.telefono)}" style="flex:1; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:var(--chip-bg); color:var(--primary); border-radius:10px; padding:9px 8px; font-size:12px; font-weight:700;">${svg('phone',14,'var(--primary)')} Llamar</a>
-        <a href="${linkWhatsApp(eq.telefono, mensajeRecordatorio(eq))}" target="_blank" rel="noopener" style="flex:1; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:#E4F6EF; color:var(--mint); border-radius:10px; padding:9px 8px; font-size:12px; font-weight:700;">${svg('whatsapp',14,'var(--mint)')} Recordar</a>
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <a href="tel:${limpiarTelefono(eq.telefono)}" style="flex:1; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:var(--chip-bg); color:var(--primary); border-radius:10px; padding:8px; font-size:12px; font-weight:700;">${svg('phone',13,'var(--primary)')} Llamar</a>
+        <a href="${linkWhatsApp(eq.telefono, mensajeRecordatorio(eq))}" target="_blank" rel="noopener" style="flex:1; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:#E4F6EF; color:var(--mint); border-radius:10px; padding:8px; font-size:12px; font-weight:700;">${svg('whatsapp',13,'var(--mint)')} Recordar</a>
       </div>` : ""}
     </div>`;
   }).join("");
 
   return `
     <div class="screen">
-      ${topBar("Agenda","home")}
+      ${topBar("Agenda","home", `<button class="iconbtn" style="background:var(--primary); color:#fff; border-radius:10px; padding:7px 12px; display:flex; align-items:center; gap:4px;" onclick="agendarDesdeAgenda()">${svg('plus',15,'#fff')} <span style="font-size:12.5px; font-weight:700;">Agendar</span></button>`)}
       <div class="scroll">
-        ${pendientes.length ? rows : `
-        <div style="display:flex; flex-direction:column; align-items:center; text-align:center; padding-top:60px;">
-          ${svg('calendarDays',36,'#5B7A93')}
-          <div style="font-weight:700; font-size:14.5px; margin-top:14px;">No hay mantenimientos programados</div>
-          <div style="font-size:12.5px; color:var(--ink-soft); margin-top:6px; max-width:240px;">
-            Programa un mantenimiento desde un equipo para verlo aquí.
+        <div class="card" style="padding:14px 10px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:0 6px 10px;">
+            <button class="iconbtn" onclick="cambiarMesAgenda(-1)">${svg('chevronLeft',18,'var(--ink)')}</button>
+            <span style="font-weight:800; font-size:14.5px;">${MESES_ES[state.agendaMonth]} de ${state.agendaYear}</span>
+            <button class="iconbtn" onclick="cambiarMesAgenda(1)">${svg('chevronRight',18,'var(--ink)')}</button>
           </div>
-        </div>`}
+          <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px; padding:0 2px 4px;">
+            ${DIAS_SEMANA_ES.map(d=>`<div style="text-align:center; font-size:10.5px; font-weight:700; color:var(--ink-soft); padding-bottom:4px;">${d}</div>`).join("")}
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px; padding:0 2px;">
+            ${celdasHtml}
+          </div>
+        </div>
+
+        <div style="margin-top:18px; font-size:13px; font-weight:800; text-transform:capitalize;">${nombreDiaSel}</div>
+        <div style="margin-top:10px;">
+          ${eventosDia.length ? eventosHtml : `<div style="font-size:12.5px; color:var(--ink-soft); padding:8px 2px;">Sin mantenimientos programados este día.</div>`}
+        </div>
       </div>
-      ${bottomNav("home")}
+      ${bottomNav("")}
     </div>`;
 }
 
