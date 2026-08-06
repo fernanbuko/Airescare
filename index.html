@@ -625,7 +625,7 @@ function screenHome(){
           ${acHero(230)}
         </div>
         ${proximo ? `
-        <div class="card" style="margin-top:18px;">
+        <div class="card" style="margin-top:18px; cursor:pointer;" onclick="openEquipo(${proximo.id})">
           <div style="font-size:11px; font-weight:700; color:var(--primary); letter-spacing:.4px; text-transform:uppercase;">Próximo mantenimiento</div>
           <div style="font-size:15px; font-weight:700; margin-top:6px;">${proximo.nombre} – ${proximo.marca}</div>
           <div style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:13.5px;">
@@ -633,10 +633,6 @@ function screenHome(){
           </div>
           <div style="font-size:12.5px; color:var(--mint); font-weight:700; margin-top:2px;">
             ${dias>=0 ? `(faltan ${dias} día${dias===1?'':'s'})` : `(venció hace ${Math.abs(dias)} día${Math.abs(dias)===1?'':'s'})`}
-          </div>
-          <div style="display:flex; gap:8px; margin-top:14px;">
-            <button class="btn-outline" style="flex:1;" onclick="go('agenda')">VER AGENDA</button>
-            <button class="btn-primary" style="flex:1;" onclick="go('equipos')">MIS EQUIPOS</button>
           </div>
         </div>` : `
         <div class="card" style="margin-top:18px;">
