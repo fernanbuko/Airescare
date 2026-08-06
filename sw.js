@@ -1,4 +1,4 @@
-const CACHE_NAME = "airescare-cache-v5";
+const CACHE_NAME = "airescare-cache-v7";
 const ASSETS = [
   "./",
   "./index.html",
@@ -8,7 +8,9 @@ const ASSETS = [
   "./consejo-filtro.png",
   "./consejo-temp.png",
   "./consejo-mantenimiento.png",
-  "./consejo-eco.png"
+  "./consejo-eco.png",
+  "./ac-hero.png",
+  "./ac-unit.png"
 ];
 
 self.addEventListener("install", (event) => {
