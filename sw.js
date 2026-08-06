@@ -1,4 +1,4 @@
-const CACHE_NAME = "airescare-cache-v7";
+const CACHE_NAME = "airescare-cache-v8";
 const ASSETS = [
   "./",
   "./index.html",

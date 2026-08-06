@@ -388,7 +388,7 @@ function loadPerfil(){
     const raw = localStorage.getItem(PERFIL_KEY);
     if(raw) return JSON.parse(raw);
   }catch(e){}
-  return { nombre: "", correo: "", telefono: "", precioKwh: null };
+  return { nombre: "", correo: "", telefono: "" };
 }
 function savePerfil(perfil){
   try{ localStorage.setItem(PERFIL_KEY, JSON.stringify(perfil)); }catch(e){}
@@ -500,9 +500,7 @@ function estimarConsumo(eq){
   const watts = (btu / 10) * (inverter ? 0.65 : 1);
   const kwhDia = (watts * horas) / 1000;
   const kwhMes = kwhDia * 30;
-  const precioKwh = state.perfil.precioKwh;
-  const costoMes = (precioKwh!=null && !isNaN(precioKwh)) ? kwhMes * Number(precioKwh) : null;
-  return { watts, horas, kwhDia, kwhMes, costoMes, inverter };
+  return { watts, horas, kwhDia, kwhMes, inverter };
 }
 
 /* ---------- Filtro de aire ---------- */
@@ -946,18 +944,13 @@ function screenDetalle(){
         <div style="font-size:19px; font-weight:800; color:var(--primary);">${consumo.kwhDia.toFixed(1)}</div>
         <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">kWh / día</div>
       </div>
-      <div style="flex:1; min-width:70px; text-align:center; padding:6px 4px; ${consumo.costoMes!=null ? 'border-right:1px solid var(--line);' : ''}">
+      <div style="flex:1; min-width:70px; text-align:center; padding:6px 4px;">
         <div style="font-size:19px; font-weight:800; color:var(--primary);">${consumo.kwhMes.toFixed(0)}</div>
         <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">kWh / mes</div>
       </div>
-      ${consumo.costoMes!=null ? `
-      <div style="flex:1; min-width:70px; text-align:center; padding:6px 4px;">
-        <div style="font-size:19px; font-weight:800; color:var(--mint);">$${consumo.costoMes.toFixed(2)}</div>
-        <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">$ / mes</div>
-      </div>` : ""}
     </div>
     <div style="font-size:11px; color:var(--ink-soft); margin-top:6px; line-height:1.4;">
-      Estimado con ${consumo.horas} h de uso al día · ${consumo.inverter ? 'Inverter' : 'Convencional'}${consumo.costoMes==null ? '. Agrega el costo del kWh en tu Perfil para ver el gasto mensual.' : '.'}
+      Estimado con ${consumo.horas} h de uso al día · ${consumo.inverter ? 'Inverter' : 'Convencional'}. El costo en dólares no se calcula porque la tarifa eléctrica varía según el consumo y la distribuidora.
     </div>` : `
     <div style="margin-top:20px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Consumo eléctrico estimado</div>
     <div class="card" style="margin-top:8px; display:flex; justify-content:space-between; align-items:center; gap:10px;">
@@ -1974,17 +1967,6 @@ function screenPerfil(){
           </button>
         </div>
 
-        <div style="margin-top:22px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Consumo eléctrico</div>
-        <div class="card" style="margin-top:8px;">
-          <label class="field-label" style="margin-top:0;">Costo de electricidad ($/kWh)</label>
-          <input class="field-input" id="pf-kwh" type="number" step="0.001" min="0" value="${p.precioKwh!=null ? p.precioKwh : ""}" placeholder="Ej: 0.10" />
-          <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px; line-height:1.4;">
-            Se usa para estimar el costo mensual de tus equipos en la pantalla de cada uno.
-          </div>
-          <button class="btn-primary" style="margin-top:12px;" onclick="guardarPerfil()">GUARDAR DATOS</button>
-        </div>
-
-
         <div style="margin-top:22px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Datos</div>
         <div class="card" style="margin-top:8px;">
           <div style="font-size:12.5px; color:var(--ink-soft); line-height:1.4;">
@@ -2014,9 +1996,7 @@ function guardarPerfil(){
   const nombre = document.getElementById("pf-nombre").value.trim();
   const correo = document.getElementById("pf-correo").value.trim();
   const telefono = document.getElementById("pf-telefono").value.trim();
-  const kwhRaw = document.getElementById("pf-kwh").value;
-  const precioKwh = kwhRaw !== "" ? Number(kwhRaw) : null;
-  state.perfil = { nombre, correo, telefono, precioKwh };
+  state.perfil = { nombre, correo, telefono };
   savePerfil(state.perfil);
   showToast("Datos guardados");
   render();
