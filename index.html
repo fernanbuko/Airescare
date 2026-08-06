@@ -175,7 +175,7 @@
     font-size:11.5px; font-weight:700; padding:4px 10px; border-radius:999px;
   }
   .equipo-icon{
-    width:44px; height:44px; border-radius:12px; background:var(--chip-bg);
+    width:64px; height:64px; border-radius:14px; background:var(--chip-bg);
     display:flex; align-items:center; justify-content:center; flex-shrink:0;
   }
   a.equipo-row{ text-decoration:none; color:inherit; }
@@ -723,7 +723,7 @@ function screenEquipos(){
     const rows = equiposFiltrados.map(eq=>{
       return `<a class="equipo-row" href="javascript:void(0)" onclick="openEquipo(${eq.id})">
         <div class="card" style="display:flex; gap:12px; margin-bottom:12px;">
-          <div class="equipo-icon" style="padding:7px;"><img src="ac-unit.png" alt="" style="width:100%; height:100%; object-fit:contain;" /></div>
+          <div class="equipo-icon" style="padding:9px;"><img src="ac-unit.png" alt="" style="width:100%; height:100%; object-fit:contain;" /></div>
           <div style="flex:1;">
             <div style="font-weight:700; font-size:14.5px;">${eq.nombre}${eq.cliente ? ` · ${eq.cliente}` : ""}</div>
             <div style="font-size:12.5px; color:var(--ink-soft);">${eq.marca}</div>
@@ -796,7 +796,7 @@ function screenDetalle(){
       ${topBar("Detalle del Equipo","equipos", `<button class="iconbtn" onclick="go('editarEquipo')">${svg('edit',19,'#0B2A45')}</button>`)}
       <div class="scroll">
         <div style="display:flex; gap:14px; align-items:center;">
-          <div style="width:56px;height:56px;border-radius:16px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center; padding:9px;">
+          <div style="width:80px;height:80px;border-radius:18px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center; padding:12px; flex-shrink:0;">
             <img src="ac-unit.png" alt="" style="width:100%; height:100%; object-fit:contain;" />
           </div>
           <div>
