@@ -10,6 +10,7 @@
 <link rel="apple-touch-icon" href="icon-192.png" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="AiresCare" />
@@ -256,7 +257,8 @@ const ICON = {
   whatsapp: `<path d="M6 18l1.1-3.2A6.8 6.8 0 1 1 10 17l-4 1z"/><path d="M8.8 9.6c0 3 2.6 5.6 5.6 5.6"/>`,
   mapPin: `<path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>`,
   cash: `<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 9v.01M18 15v.01"/>`,
-  calendarDays: `<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/>`
+  calendarDays: `<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/>`,
+  search: `<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>`
 };
 function svg(name, size=20, color="currentColor", strokeW=2){
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="${strokeW}" stroke-linecap="round" stroke-linejoin="round">${ICON[name]||""}</svg>`;
@@ -347,7 +349,11 @@ let state = {
   agendaMonth: null,
   agendaDiaSel: null,
   prefillFecha: null,
-  agendaReagendando: null
+  agendaReagendando: null,
+  vistaEquipos: "equipo",
+  equiposBusqueda: "",
+  comprobanteEquipoId: null,
+  comprobanteHistorialId: null
 };
 
 function fechaISOaDMY(iso){
@@ -628,27 +634,100 @@ function screenEquipos(){
         ${bottomNav("equipos")}
       </div>`;
   }
-  const rows = state.equipos.map(eq=>{
-    return `<a class="equipo-row" href="javascript:void(0)" onclick="openEquipo(${eq.id})">
-      <div class="card" style="display:flex; gap:12px; margin-bottom:12px;">
-        <div class="equipo-icon">${svg('ac',22,'#0E63B0')}</div>
-        <div style="flex:1;">
-          <div style="font-weight:700; font-size:14.5px;">${eq.nombre}${eq.cliente ? ` · ${eq.cliente}` : ""}</div>
-          <div style="font-size:12.5px; color:var(--ink-soft);">${eq.marca}</div>
-          <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">Instalado: ${eq.instalado}</div>
-          <div style="font-size:11.5px; color:var(--ink-soft);">Último mantenimiento: ${eq.ultimo || "Aún sin mantenimiento"}</div>
-          <div class="chip" style="margin-top:8px;">${eq.proximo ? `Próximo: ${eq.proximo}` : "Sin mantenimiento programado"}</div>
+
+  const q = (state.equiposBusqueda || "").trim().toLowerCase();
+  const coincide = eq => !q || [eq.nombre, eq.cliente, eq.marca, eq.direccion, eq.telefono].some(v => (v||"").toLowerCase().includes(q));
+
+  const vista = state.vistaEquipos || "equipo";
+  const toggleBar = `
+    <div style="display:flex; gap:6px; background:var(--chip-bg); border-radius:12px; padding:4px; margin-bottom:14px;">
+      <button onclick="cambiarVistaEquipos('equipo')" style="flex:1; padding:8px 0; border:none; border-radius:9px; font-size:12.5px; font-weight:700; cursor:pointer; background:${vista==='equipo'?'#fff':'transparent'}; color:${vista==='equipo'?'var(--primary)':'var(--ink-soft)'}; box-shadow:${vista==='equipo'?'0 1px 3px rgba(11,42,69,0.12)':'none'};">Por equipo</button>
+      <button onclick="cambiarVistaEquipos('cliente')" style="flex:1; padding:8px 0; border:none; border-radius:9px; font-size:12.5px; font-weight:700; cursor:pointer; background:${vista==='cliente'?'#fff':'transparent'}; color:${vista==='cliente'?'var(--primary)':'var(--ink-soft)'}; box-shadow:${vista==='cliente'?'0 1px 3px rgba(11,42,69,0.12)':'none'};">Por cliente</button>
+    </div>`;
+
+  const buscadorHtml = `
+    <div style="position:relative; margin-bottom:14px;">
+      <input type="text" class="field-input" style="margin-top:0; padding-left:36px;" placeholder="Buscar cliente, equipo o marca..." value="${q ? state.equiposBusqueda : ''}" oninput="buscarEquipos(this.value)" />
+      <div style="position:absolute; left:11px; top:50%; transform:translateY(-50%); pointer-events:none; color:var(--ink-soft);">${svg('search',16,'var(--ink-soft)')}</div>
+    </div>`;
+
+  let contenido;
+  if(vista === "cliente"){
+    const grupos = {};
+    state.equipos.filter(coincide).forEach(eq=>{
+      const key = (eq.cliente||"").trim() || "__sin_cliente__";
+      if(!grupos[key]) grupos[key] = { nombre: key==="__sin_cliente__" ? "Sin cliente asignado" : eq.cliente, telefono:"", direccion:"", equipos:[] };
+      if(!grupos[key].telefono && eq.telefono) grupos[key].telefono = eq.telefono;
+      if(!grupos[key].direccion && eq.direccion) grupos[key].direccion = eq.direccion;
+      grupos[key].equipos.push(eq);
+    });
+    const listaGrupos = Object.values(grupos).sort((a,b)=> a.nombre==="Sin cliente asignado" ? 1 : b.nombre==="Sin cliente asignado" ? -1 : a.nombre.localeCompare(b.nombre));
+
+    contenido = listaGrupos.length ? `<div class="grid-cards">${listaGrupos.map(g=>{
+      const tieneTelefono = !!limpiarTelefono(g.telefono);
+      return `
+      <div class="card">
+        <div style="font-weight:700; font-size:14.5px;">${g.nombre}</div>
+        ${g.direccion ? `<div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${g.direccion}</div>` : ""}
+        ${tieneTelefono ? `
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <a href="tel:${limpiarTelefono(g.telefono)}" style="flex:1; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:var(--chip-bg); color:var(--primary); border-radius:10px; padding:8px; font-size:12px; font-weight:700;">${svg('phone',13,'var(--primary)')} Llamar</a>
+          <a href="${linkWhatsApp(g.telefono, `Hola ${g.nombre.split(' ')[0]}, te escribimos de AiresCare.`)}" target="_blank" rel="noopener" style="flex:1; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:#E4F6EF; color:var(--mint); border-radius:10px; padding:8px; font-size:12px; font-weight:700;">${svg('whatsapp',13,'var(--mint)')} WhatsApp</a>
+        </div>` : ""}
+        <div style="margin-top:12px; border-top:1px solid var(--line); padding-top:10px; display:flex; flex-direction:column; gap:8px;">
+          ${g.equipos.map(eq=>`
+            <button onclick="openEquipo(${eq.id})" style="background:var(--app-bg); border:none; border-radius:10px; padding:9px 10px; text-align:left; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+              <div>
+                <div style="font-size:12.5px; font-weight:700;">${eq.nombre}</div>
+                <div style="font-size:11px; color:var(--ink-soft);">${eq.marca}</div>
+              </div>
+              ${svg('chevronRight',15,'#5B7A93')}
+            </button>`).join("")}
         </div>
-        <div style="align-self:center;">${svg('chevronRight',18,'#5B7A93')}</div>
-      </div>
-    </a>`;
-  }).join("");
+      </div>`;
+    }).join("")}</div>` : `<div style="text-align:center; color:var(--ink-soft); font-size:13px; padding-top:40px;">Sin resultados.</div>`;
+  } else {
+    const equiposFiltrados = state.equipos.filter(coincide);
+    const rows = equiposFiltrados.map(eq=>{
+      return `<a class="equipo-row" href="javascript:void(0)" onclick="openEquipo(${eq.id})">
+        <div class="card" style="display:flex; gap:12px; margin-bottom:12px;">
+          <div class="equipo-icon">${svg('ac',22,'#0E63B0')}</div>
+          <div style="flex:1;">
+            <div style="font-weight:700; font-size:14.5px;">${eq.nombre}${eq.cliente ? ` · ${eq.cliente}` : ""}</div>
+            <div style="font-size:12.5px; color:var(--ink-soft);">${eq.marca}</div>
+            <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">Instalado: ${eq.instalado}</div>
+            <div style="font-size:11.5px; color:var(--ink-soft);">Último mantenimiento: ${eq.ultimo || "Aún sin mantenimiento"}</div>
+            <div class="chip" style="margin-top:8px;">${eq.proximo ? `Próximo: ${eq.proximo}` : "Sin mantenimiento programado"}</div>
+          </div>
+          <div style="align-self:center;">${svg('chevronRight',18,'#5B7A93')}</div>
+        </div>
+      </a>`;
+    }).join("");
+    contenido = equiposFiltrados.length ? `<div class="grid-cards">${rows}</div>` : `<div style="text-align:center; color:var(--ink-soft); font-size:13px; padding-top:40px;">Sin resultados.</div>`;
+  }
+
   return `
     <div class="screen">
       ${topBar("Mis Equipos","home", `<div style="display:flex; gap:6px;"><button class="iconbtn" onclick="go('agenda')">${svg('calendarDays',20,'#0B2A45')}</button><button class="iconbtn" onclick="go('agregarEquipo')">${svg('plus',22,'#0B2A45')}</button></div>`)}
-      <div class="scroll"><div class="grid-cards">${rows}</div></div>
+      <div class="scroll">
+        ${toggleBar}
+        ${buscadorHtml}
+        ${contenido}
+      </div>
       ${bottomNav("equipos")}
     </div>`;
+}
+
+function cambiarVistaEquipos(v){
+  state.vistaEquipos = v;
+  render();
+}
+
+function buscarEquipos(valor){
+  state.equiposBusqueda = valor;
+  render();
+  const input = document.querySelector('.scroll input[type="text"]');
+  if(input){ input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
 }
 
 function screenDetalle(){
@@ -1163,6 +1242,7 @@ function screenAgenda(){
       <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
         ${!ev.realizado ? `<button onclick="marcarRealizadoAgenda(${ev.equipoId},'${ev.historialId}')" style="flex:1; min-width:120px; background:#E4F6EF; color:var(--mint); border:none; border-radius:10px; padding:8px; font-size:12px; font-weight:700; cursor:pointer;">${svg('check',13,'var(--mint)')} Marcar hecho</button>` : ""}
         ${!ev.realizado ? `<button onclick="abrirReagendarAgenda(${ev.equipoId},'${ev.historialId}')" style="flex:1; min-width:120px; background:var(--chip-bg); color:var(--primary); border:none; border-radius:10px; padding:8px; font-size:12px; font-weight:700; cursor:pointer;">${svg('calendar',13,'var(--primary)')} Reagendar</button>` : ""}
+        ${ev.realizado ? `<button onclick="verComprobante(${ev.equipoId},'${ev.historialId}')" style="flex:1; min-width:120px; background:var(--chip-bg); color:var(--primary); border:none; border-radius:10px; padding:8px; font-size:12px; font-weight:700; cursor:pointer;">${svg('cash',13,'var(--primary)')} Comprobante</button>` : ""}
       </div>
       ${(tieneTelefono && !ev.realizado) ? `
       <div style="display:flex; gap:8px; margin-top:8px;">
@@ -1225,6 +1305,7 @@ function screenHistorial(){
         <div style="font-size:12px; color:var(--primary); font-weight:700; margin-top:2px;">${h.equipo} · ${h.tipo}${(h.precio!==undefined && h.precio!==null) ? ` · $${Number(h.precio).toFixed(2)}` : ""} ${h.realizado ? '' : '· <span style="color:var(--warn);">Pendiente</span>'}</div>
         <div style="font-size:12px; color:var(--ink-soft); margin-top:4px;">Técnico: ${h.tecnico}</div>
         <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">Notas: ${h.notas}</div>
+        ${h.realizado ? `<button onclick="event.stopPropagation(); verComprobante('${h.equipoId}','${h.id}')" style="margin-top:8px; background:var(--chip-bg); color:var(--primary); border:none; border-radius:8px; padding:7px 10px; font-size:11.5px; font-weight:700; cursor:pointer;">${svg('cash',12,'var(--primary)')} Ver comprobante</button>` : ""}
       </div>
     </div>`).join("");
 
@@ -1352,6 +1433,160 @@ function guardarEdicionHistorial(){
   saveEquipos(state.equipos);
   showToast("Registro actualizado");
   go("historial");
+}
+
+/* ---------- Comprobante de servicio ---------- */
+function verComprobante(equipoId, historialId){
+  state.comprobanteEquipoId = Number(equipoId);
+  state.comprobanteHistorialId = historialId;
+  go("comprobante");
+}
+
+function datosComprobante(){
+  const eq = state.equipos.find(e=>e.id===state.comprobanteEquipoId);
+  const h = eq ? eq.historial.find(x=>String(x.id)===String(state.comprobanteHistorialId)) : null;
+  return { eq, h };
+}
+
+function textoComprobante(eq, h){
+  const lineas = [
+    `AiresCare · Comprobante de servicio`,
+    ``,
+    `Cliente: ${eq.cliente || "-"}`,
+    `Equipo: ${eq.nombre}${eq.marca && eq.marca!=='Sin especificar' ? ' - '+eq.marca : ''}`,
+    `Fecha: ${h.fecha}${h.hora ? ' · '+h.hora : ''}`,
+    `Servicio: ${h.tipo}`,
+    `Técnico: ${h.tecnico}`,
+  ];
+  if(h.precio!==undefined && h.precio!==null) lineas.push(`Precio: $${Number(h.precio).toFixed(2)}`);
+  if(h.notas && h.notas!=='Sin notas.') lineas.push(`Notas: ${h.notas}`);
+  lineas.push(``, `¡Gracias por confiar en nosotros!`);
+  return lineas.join("\n");
+}
+
+function enviarComprobanteWhatsApp(){
+  const { eq, h } = datosComprobante();
+  if(!eq || !h) return;
+  const texto = textoComprobante(eq, h);
+  window.open(linkWhatsApp(eq.telefono, texto), "_blank", "noopener");
+}
+
+function descargarComprobantePDF(){
+  const { eq, h } = datosComprobante();
+  if(!eq || !h) return;
+  if(typeof window.jspdf === "undefined"){
+    showToast("No se pudo cargar el generador de PDF");
+    return;
+  }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:"pt", format:"a4" });
+  const azul = [14,99,176];
+  const gris = [91,122,147];
+  const tinta = [11,42,69];
+
+  doc.setFillColor(...azul);
+  doc.rect(0,0,595,90,"F");
+  doc.setTextColor(255,255,255);
+  doc.setFontSize(20);
+  doc.setFont("helvetica","bold");
+  doc.text("AiresCare", 40, 45);
+  doc.setFontSize(11);
+  doc.setFont("helvetica","normal");
+  doc.text("Comprobante de servicio de mantenimiento", 40, 65);
+
+  let y = 130;
+  doc.setTextColor(...tinta);
+  doc.setFontSize(13);
+  doc.setFont("helvetica","bold");
+  doc.text(eq.cliente || "Cliente sin nombre", 40, y);
+  y += 18;
+  doc.setFontSize(10);
+  doc.setFont("helvetica","normal");
+  doc.setTextColor(...gris);
+  if(eq.telefono) { doc.text(`Tel: ${eq.telefono}`, 40, y); y += 15; }
+  if(eq.direccion) { doc.text(`Dirección: ${eq.direccion}`, 40, y); y += 15; }
+
+  y += 15;
+  doc.setDrawColor(220,234,243);
+  doc.line(40, y, 555, y);
+  y += 30;
+
+  const filas = [
+    ["Equipo", `${eq.nombre}${eq.marca && eq.marca!=='Sin especificar' ? ' - '+eq.marca : ''}`],
+    ["Fecha", `${h.fecha}${h.hora ? ' · '+h.hora : ''}`],
+    ["Tipo de servicio", h.tipo],
+    ["Técnico", h.tecnico],
+  ];
+  if(h.precio!==undefined && h.precio!==null) filas.push(["Precio", `$${Number(h.precio).toFixed(2)}`]);
+  filas.push(["Notas", (h.notas && h.notas!=='Sin notas.') ? h.notas : "-"]);
+
+  filas.forEach(([label, val])=>{
+    doc.setFont("helvetica","bold");
+    doc.setTextColor(...tinta);
+    doc.setFontSize(10.5);
+    doc.text(label, 40, y);
+    doc.setFont("helvetica","normal");
+    doc.setTextColor(...gris);
+    const texto = doc.splitTextToSize(String(val), 350);
+    doc.text(texto, 200, y);
+    y += 20 * texto.length;
+  });
+
+  y += 20;
+  doc.setDrawColor(220,234,243);
+  doc.line(40, y, 555, y);
+  y += 25;
+  doc.setFontSize(10);
+  doc.setTextColor(...gris);
+  doc.text("¡Gracias por confiar en AiresCare para el mantenimiento de tus equipos!", 40, y);
+
+  const nombreArchivo = `comprobante-${(eq.cliente||eq.nombre).replace(/\s+/g,'_')}-${h.fecha.replace(/\//g,'-')}.pdf`;
+  doc.save(nombreArchivo);
+}
+
+function screenComprobante(){
+  const { eq, h } = datosComprobante();
+  if(!eq || !h){
+    return `
+      <div class="screen">
+        ${topBar("Comprobante","historial")}
+        <div class="scroll" style="padding-top:60px; text-align:center; color:var(--ink-soft); font-size:13px;">
+          No se encontró el registro.
+        </div>
+        ${bottomNav("historial")}
+      </div>`;
+  }
+  const tieneTelefono = !!limpiarTelefono(eq.telefono);
+  return `
+    <div class="screen">
+      ${topBar("Comprobante","historial")}
+      <div class="scroll">
+        <div class="card" style="padding:0; overflow:hidden;">
+          <div style="background:linear-gradient(135deg, var(--primary-deep), var(--primary)); padding:20px; color:#fff;">
+            <div style="font-weight:800; font-size:17px;">AiresCare</div>
+            <div style="font-size:12px; opacity:0.9; margin-top:2px;">Comprobante de servicio de mantenimiento</div>
+          </div>
+          <div style="padding:18px;">
+            <div style="font-weight:700; font-size:15px;">${eq.cliente || "Cliente sin nombre"}</div>
+            ${eq.telefono ? `<div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${eq.telefono}</div>` : ""}
+            ${eq.direccion ? `<div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${eq.direccion}</div>` : ""}
+
+            <div style="margin-top:16px; border-top:1px solid var(--line); padding-top:14px; display:flex; flex-direction:column; gap:10px;">
+              <div style="display:flex; justify-content:space-between; font-size:13px;"><span style="color:var(--ink-soft);">Equipo</span><span style="font-weight:700;">${eq.nombre}${eq.marca && eq.marca!=='Sin especificar' ? ' - '+eq.marca : ''}</span></div>
+              <div style="display:flex; justify-content:space-between; font-size:13px;"><span style="color:var(--ink-soft);">Fecha</span><span style="font-weight:700;">${h.fecha}${h.hora ? ' · '+h.hora : ''}</span></div>
+              <div style="display:flex; justify-content:space-between; font-size:13px;"><span style="color:var(--ink-soft);">Servicio</span><span style="font-weight:700;">${h.tipo}</span></div>
+              <div style="display:flex; justify-content:space-between; font-size:13px;"><span style="color:var(--ink-soft);">Técnico</span><span style="font-weight:700;">${h.tecnico}</span></div>
+              ${(h.precio!==undefined && h.precio!==null) ? `<div style="display:flex; justify-content:space-between; font-size:13px;"><span style="color:var(--ink-soft);">Precio</span><span style="font-weight:700; color:var(--mint);">$${Number(h.precio).toFixed(2)}</span></div>` : ""}
+              ${(h.notas && h.notas!=='Sin notas.') ? `<div style="font-size:12.5px; color:var(--ink-soft); margin-top:4px;">Notas: ${h.notas}</div>` : ""}
+            </div>
+          </div>
+        </div>
+
+        <button class="btn-primary" style="margin-top:18px;" onclick="descargarComprobantePDF()">${svg('cash',15,'#fff')} DESCARGAR PDF</button>
+        ${tieneTelefono ? `<button class="btn-outline" style="margin-top:10px; margin-bottom:20px;" onclick="enviarComprobanteWhatsApp()">${svg('whatsapp',15,'var(--primary)')} ENVIAR POR WHATSAPP</button>` : ""}
+      </div>
+      ${bottomNav("historial")}
+    </div>`;
 }
 
 function eliminarHistorialItem(equipoId, historialId){
@@ -1530,6 +1765,7 @@ function render(){
     notificacion: screenNotificacion,
     historial: screenHistorial,
     editarHistorial: screenEditarHistorial,
+    comprobante: screenComprobante,
     agenda: screenAgenda,
     consejos: screenConsejos,
     perfil: screenPerfil
@@ -1545,7 +1781,7 @@ function updateSidebarActive(){
     home:"home", notificacion:"home",
     equipos:"equipos", detalle:"equipos", agregarEquipo:"equipos", editarEquipo:"equipos", agendar:"equipos",
     agenda:"agenda",
-    historial:"historial", editarHistorial:"historial",
+    historial:"historial", editarHistorial:"historial", comprobante:"historial",
     consejos:"consejos",
     perfil:"perfil"
   }[state.screen] || "home";
