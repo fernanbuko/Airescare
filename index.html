@@ -410,7 +410,11 @@ function limpiarTelefono(tel){
 }
 
 function linkWhatsApp(tel, mensaje){
-  const limpio = limpiarTelefono(tel).replace(/^\+/,"");
+  let limpio = limpiarTelefono(tel);
+  // Si el número está en formato local (empieza en 0), le ponemos el
+  // código de país +593 (Ecuador) delante para que WhatsApp lo reconozca.
+  if(limpio.startsWith("0")) limpio = "593" + limpio.slice(1);
+  limpio = limpio.replace(/^\+/,"");
   return `https://wa.me/${limpio}?text=${encodeURIComponent(mensaje)}`;
 }
 
