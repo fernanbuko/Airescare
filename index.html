@@ -6,6 +6,12 @@
 <title>AiresCare - Mantenimiento de Aires Acondicionados</title>
 <meta name="description" content="Recordatorios y control de mantenimiento para tus aires acondicionados." />
 <link rel="manifest" href="manifest.json" />
+<script>
+  try{
+    var t = localStorage.getItem("airescare_theme_v1");
+    if(t === "dark") document.documentElement.setAttribute("data-theme","dark");
+  }catch(e){}
+</script>
 <meta name="theme-color" content="#0E63B0" />
 <link rel="apple-touch-icon" href="icon-192.png" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -31,6 +37,23 @@
     --chip-bg:#E7F3FC;
     --warn:#E8A33D;
   }
+  [data-theme="dark"]{
+    --bg:#0B1622;
+    --app-bg:#0F1B29;
+    --card:#162435;
+    --ink:#EAF2F8;
+    --ink-soft:#8CA3B8;
+    --primary:#3B9CF0;
+    --primary-deep:#0E63B0;
+    --accent:#4FD1E0;
+    --mint:#34D1A6;
+    --line:#233448;
+    --chip-bg:#1B2C40;
+    --warn:#F0B559;
+  }
+  [data-theme="dark"] body{ background:var(--bg); }
+  [data-theme="dark"] .install-banner{ background:#0B1622; }
+  [data-theme="dark"] img[src$=".png"]{ filter:none; }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
   body{
@@ -174,6 +197,22 @@
     display:inline-block; background:var(--chip-bg); color:var(--primary);
     font-size:11.5px; font-weight:700; padding:4px 10px; border-radius:999px;
   }
+  .chip-warn{ background:#FBE9D2; color:#B4700C; }
+  [data-theme="dark"] .chip-warn{ background:#3A2A10; color:#F0B559; }
+  .toggle-switch{
+    position:relative; display:inline-block; width:44px; height:26px; flex-shrink:0;
+  }
+  .toggle-switch input{ opacity:0; width:0; height:0; }
+  .toggle-slider{
+    position:absolute; cursor:pointer; inset:0; background:var(--line);
+    border-radius:999px; transition:.2s;
+  }
+  .toggle-slider:before{
+    position:absolute; content:""; height:20px; width:20px; left:3px; bottom:3px;
+    background:#fff; border-radius:50%; transition:.2s;
+  }
+  .toggle-switch input:checked + .toggle-slider{ background:var(--primary); }
+  .toggle-switch input:checked + .toggle-slider:before{ transform:translateX(18px); }
   .equipo-icon{
     width:76px; height:76px; border-radius:16px; background:var(--chip-bg);
     display:flex; align-items:center; justify-content:center; flex-shrink:0;
@@ -346,7 +385,7 @@ function loadPerfil(){
     const raw = localStorage.getItem(PERFIL_KEY);
     if(raw) return JSON.parse(raw);
   }catch(e){}
-  return { nombre: "", correo: "", telefono: "" };
+  return { nombre: "", correo: "", telefono: "", precioKwh: null };
 }
 function savePerfil(perfil){
   try{ localStorage.setItem(PERFIL_KEY, JSON.stringify(perfil)); }catch(e){}
@@ -364,10 +403,29 @@ function saveNotifLog(log){
   try{ localStorage.setItem(NOTIF_LOG_KEY, JSON.stringify(log)); }catch(e){}
 }
 
+const THEME_KEY = "airescare_theme_v1";
+function loadTheme(){
+  try{ return localStorage.getItem(THEME_KEY) || "light"; }catch(e){ return "light"; }
+}
+function aplicarTema(tema){
+  if(tema === "dark"){
+    document.documentElement.setAttribute("data-theme","dark");
+  } else {
+    document.documentElement.removeAttribute("data-theme");
+  }
+}
+function alternarTema(){
+  state.tema = state.tema === "dark" ? "light" : "dark";
+  try{ localStorage.setItem(THEME_KEY, state.tema); }catch(e){}
+  aplicarTema(state.tema);
+  render();
+}
+
 let state = {
   screen: "home",
   equipos: loadEquipos(),
   perfil: loadPerfil(),
+  tema: loadTheme(),
   equipoSelId: null,
   lastSaved: null,
   historialFiltro: null,
@@ -413,6 +471,52 @@ function fechaLarga(str){
 }
 function nextId(){
   return state.equipos.reduce((max,e)=>Math.max(max,e.id),0) + 1;
+}
+
+/* ---------- Consumo eléctrico estimado ---------- */
+function parseBTU(capacidadStr){
+  if(!capacidadStr) return null;
+  const match = String(capacidadStr).replace(/,/g,"").match(/(\d+(\.\d+)?)/);
+  if(!match) return null;
+  const num = Number(match[1]);
+  return num > 0 ? num : null;
+}
+function estimarConsumo(eq){
+  const btu = parseBTU(eq.capacidad);
+  if(!btu) return null;
+  const horas = (eq.horasUso!=null && eq.horasUso!=="") ? Number(eq.horasUso) : 8;
+  // Regla práctica: watts ≈ BTU / 10 (EER promedio de referencia)
+  const watts = btu / 10;
+  const kwhDia = (watts * horas) / 1000;
+  const kwhMes = kwhDia * 30;
+  const precioKwh = state.perfil.precioKwh;
+  const costoMes = (precioKwh!=null && !isNaN(precioKwh)) ? kwhMes * Number(precioKwh) : null;
+  return { watts, horas, kwhDia, kwhMes, costoMes };
+}
+
+/* ---------- Filtro de aire ---------- */
+const FILTRO_FRECUENCIA_DIAS = 14;
+function diasDesdeFiltro(eq){
+  if(!eq.filtroLimpio) return null;
+  const target = parseDMY(eq.filtroLimpio);
+  const today = new Date(); today.setHours(0,0,0,0);
+  return Math.floor((today - target) / 86400000);
+}
+function estadoFiltro(eq){
+  const dias = diasDesdeFiltro(eq);
+  if(dias === null) return { estado:"sinDato", dias:null };
+  if(dias >= FILTRO_FRECUENCIA_DIAS) return { estado:"sucio", dias };
+  if(dias >= FILTRO_FRECUENCIA_DIAS - 3) return { estado:"porVencer", dias };
+  return { estado:"limpio", dias };
+}
+function marcarFiltroLimpio(id){
+  const eq = state.equipos.find(e=>e.id===id);
+  if(!eq) return;
+  const hoy = new Date();
+  eq.filtroLimpio = `${String(hoy.getDate()).padStart(2,"0")}/${String(hoy.getMonth()+1).padStart(2,"0")}/${hoy.getFullYear()}`;
+  saveEquipos(state.equipos);
+  showToast("Filtro marcado como limpio");
+  render();
 }
 
 function limpiarTelefono(tel){
@@ -718,6 +822,7 @@ function screenEquipos(){
   } else {
     const equiposFiltrados = state.equipos.filter(coincide);
     const rows = equiposFiltrados.map(eq=>{
+      const filtroSucio = estadoFiltro(eq).estado === "sucio";
       return `<a class="equipo-row" href="javascript:void(0)" onclick="openEquipo(${eq.id})">
         <div class="card" style="display:flex; gap:12px; margin-bottom:12px;">
           <div class="equipo-icon" style="padding:10px;"><img src="ac-unit.png" alt="" style="width:100%; height:100%; object-fit:contain;" /></div>
@@ -726,7 +831,10 @@ function screenEquipos(){
             <div style="font-size:12.5px; color:var(--ink-soft);">${eq.marca}</div>
             <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">Instalado: ${eq.instalado}</div>
             <div style="font-size:11.5px; color:var(--ink-soft);">Último mantenimiento: ${eq.ultimo || "Aún sin mantenimiento"}</div>
-            <div class="chip" style="margin-top:8px;">${eq.proximo ? `Próximo: ${eq.proximo}` : "Sin mantenimiento programado"}</div>
+            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
+              <div class="chip">${eq.proximo ? `Próximo: ${eq.proximo}` : "Sin mantenimiento programado"}</div>
+              ${filtroSucio ? `<div class="chip chip-warn">Filtro sucio</div>` : ""}
+            </div>
           </div>
           <div style="align-self:center;">${svg('chevronRight',18,'#5B7A93')}</div>
         </div>
@@ -788,6 +896,57 @@ function screenDetalle(){
       <button class="iconbtn" onclick="go('editarEquipo')">${svg('edit',16,'var(--primary)')}</button>
     </div>`;
 
+  const filtro = estadoFiltro(eq);
+  const filtroTextos = {
+    sucio: `Filtro sucio${filtro.dias!=null ? ` · hace ${filtro.dias} día${filtro.dias===1?'':'s'}` : ''}`,
+    porVencer: `Límpialo pronto · hace ${filtro.dias} día${filtro.dias===1?'':'s'}`,
+    limpio: `Filtro limpio · hace ${filtro.dias} día${filtro.dias===1?'':'s'}`,
+    sinDato: `Sin registrar última limpieza`
+  };
+  const filtroColores = {
+    sucio: { bg:'#FBE7E7', fg:'#D64545' },
+    porVencer: { bg:'#FBE9D2', fg:'#B4700C' },
+    limpio: { bg:'#E4F6EF', fg:'var(--mint)' },
+    sinDato: { bg:'var(--chip-bg)', fg:'var(--ink-soft)' }
+  };
+  const fc = filtroColores[filtro.estado];
+  const filtroCard = `
+    <div style="margin-top:20px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Filtro de aire</div>
+    <div class="card" style="margin-top:8px; display:flex; justify-content:space-between; align-items:center; gap:10px;">
+      <div>
+        <span style="display:inline-block; background:${fc.bg}; color:${fc.fg}; font-size:11.5px; font-weight:700; padding:4px 10px; border-radius:999px;">${filtroTextos[filtro.estado]}</span>
+        <div style="font-size:11px; color:var(--ink-soft); margin-top:6px;">Se recomienda limpiar cada ${FILTRO_FRECUENCIA_DIAS} días.</div>
+      </div>
+      <button class="btn-outline" style="width:auto; padding:9px 12px; font-size:12px; flex-shrink:0;" onclick="marcarFiltroLimpio(${eq.id})">Marcar limpio</button>
+    </div>`;
+
+  const consumo = estimarConsumo(eq);
+  const consumoCard = consumo ? `
+    <div style="margin-top:20px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Consumo eléctrico estimado</div>
+    <div class="card" style="margin-top:8px; display:flex; gap:10px;">
+      <div style="flex:1; text-align:center; padding:6px 4px; border-right:1px solid var(--line);">
+        <div style="font-size:19px; font-weight:800; color:var(--primary);">${consumo.kwhDia.toFixed(1)}</div>
+        <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">kWh / día</div>
+      </div>
+      <div style="flex:1; text-align:center; padding:6px 4px; ${consumo.costoMes!=null ? 'border-right:1px solid var(--line);' : ''}">
+        <div style="font-size:19px; font-weight:800; color:var(--primary);">${consumo.kwhMes.toFixed(0)}</div>
+        <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">kWh / mes</div>
+      </div>
+      ${consumo.costoMes!=null ? `
+      <div style="flex:1; text-align:center; padding:6px 4px;">
+        <div style="font-size:19px; font-weight:800; color:var(--mint);">$${consumo.costoMes.toFixed(2)}</div>
+        <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">$ / mes</div>
+      </div>` : ""}
+    </div>
+    <div style="font-size:11px; color:var(--ink-soft); margin-top:6px; line-height:1.4;">
+      Estimado con ${consumo.horas} h de uso al día${consumo.costoMes==null ? '. Agrega el costo del kWh en tu Perfil para ver el gasto mensual.' : '.'}
+    </div>` : `
+    <div style="margin-top:20px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Consumo eléctrico estimado</div>
+    <div class="card" style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
+      <span style="font-size:12.5px; color:var(--ink-soft);">Registra la capacidad en BTU del equipo para estimarlo</span>
+      <button class="iconbtn" onclick="go('editarEquipo')">${svg('edit',16,'var(--primary)')}</button>
+    </div>`;
+
   return `
     <div class="screen">
       ${topBar("Detalle del Equipo","equipos", `<button class="iconbtn" onclick="go('editarEquipo')">${svg('edit',19,'#0B2A45')}</button>`)}
@@ -800,6 +959,7 @@ function screenDetalle(){
             <div style="font-weight:800; font-size:17px;">${eq.nombre}</div>
             <div style="font-size:13px; color:var(--ink-soft);">${eq.marca}</div>
             <span style="display:inline-block;margin-top:4px;background:#E4F6EF;color:var(--mint);font-size:11px;font-weight:700;padding:2px 10px;border-radius:999px;">${eq.estado}</span>
+            ${filtro.estado==="sucio" ? `<span style="display:inline-block;margin-top:4px;margin-left:6px;background:#FBE7E7;color:#D64545;font-size:11px;font-weight:700;padding:2px 10px;border-radius:999px;">Filtro sucio</span>` : ""}
           </div>
         </div>
         ${clienteCard}
@@ -811,6 +971,8 @@ function screenDetalle(){
               <span style="font-size:13px; font-weight:700; color:${hl?'var(--primary)':'var(--ink)'};">${val}</span>
             </div>`).join("")}
         </div>
+        ${filtroCard}
+        ${consumoCard}
         <div style="margin-top:20px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Acciones</div>
         <button class="btn-primary" style="margin-top:10px;" onclick="go('agendar')">PROGRAMAR MANTENIMIENTO</button>
         <button class="btn-outline" style="margin-top:10px; margin-bottom:20px;" onclick="go('historial')">VER HISTORIAL</button>
@@ -852,6 +1014,12 @@ function screenAgregarEquipo(){
         <label class="field-label">Fecha de instalación</label>
         <input class="field-input" id="ne-instalado" type="date" />
 
+        <label class="field-label">Horas de uso al día (aprox.)</label>
+        <input class="field-input" id="ne-horas" type="number" min="0" max="24" step="0.5" placeholder="Ej: 8" />
+
+        <label class="field-label">Última limpieza de filtro (opcional)</label>
+        <input class="field-input" id="ne-filtro" type="date" />
+
         <button class="btn-primary" style="margin-top:20px; margin-bottom:20px;" onclick="registrarEquipo()">GUARDAR EQUIPO</button>
       </div>
       ${bottomNav("equipos")}
@@ -873,6 +1041,8 @@ function registrarEquipo(){
   }
 
   const coords = obtenerCoordenadasPicker();
+  const horasRaw = document.getElementById("ne-horas").value;
+  const filtroISO = document.getElementById("ne-filtro").value;
 
   const nuevo = {
     id: nextId(),
@@ -885,6 +1055,8 @@ function registrarEquipo(){
     marca: marca || "Sin especificar",
     capacidad: capacidad || "Sin especificar",
     instalado: instaladoISO ? fechaISOaDMY(instaladoISO) : "-",
+    horasUso: horasRaw !== "" ? Number(horasRaw) : null,
+    filtroLimpio: filtroISO ? fechaISOaDMY(filtroISO) : null,
     ultimo: null,
     proximo: null,
     estado: "Activo",
@@ -931,6 +1103,12 @@ function screenEditarEquipo(){
         <label class="field-label">Fecha de instalación</label>
         <input class="field-input" id="ee-instalado" type="date" value="${fechaDMYaISO(eq.instalado)}" />
 
+        <label class="field-label">Horas de uso al día (aprox.)</label>
+        <input class="field-input" id="ee-horas" type="number" min="0" max="24" step="0.5" value="${eq.horasUso!=null?eq.horasUso:""}" placeholder="Ej: 8" />
+
+        <label class="field-label">Última limpieza de filtro (opcional)</label>
+        <input class="field-input" id="ee-filtro" type="date" value="${eq.filtroLimpio?fechaDMYaISO(eq.filtroLimpio):""}" />
+
         <button class="btn-primary" style="margin-top:20px;" onclick="guardarEdicionEquipo()">GUARDAR CAMBIOS</button>
         <button class="btn-outline" style="margin-top:10px; margin-bottom:20px; border-color:#D64545; color:#D64545;" onclick="eliminarEquipo()">ELIMINAR EQUIPO</button>
       </div>
@@ -963,6 +1141,10 @@ function guardarEdicionEquipo(){
   eq.marca = marca || "Sin especificar";
   eq.capacidad = capacidad || "Sin especificar";
   eq.instalado = instaladoISO ? fechaISOaDMY(instaladoISO) : eq.instalado;
+  const horasRaw = document.getElementById("ee-horas").value;
+  const filtroISO = document.getElementById("ee-filtro").value;
+  eq.horasUso = horasRaw !== "" ? Number(horasRaw) : null;
+  eq.filtroLimpio = filtroISO ? fechaISOaDMY(filtroISO) : null;
   saveEquipos(state.equipos);
   showToast("Cambios guardados");
   go("detalle");
@@ -1739,6 +1921,14 @@ function screenPerfil(){
         <div style="margin-top:22px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Preferencias</div>
         <div class="card" style="margin-top:8px; padding:4px;">
           <div style="display:flex; justify-content:space-between; align-items:center; padding:14px; gap:10px;">
+            <span style="font-size:13.5px;">Modo oscuro</span>
+            <label class="toggle-switch">
+              <input type="checkbox" ${state.tema==="dark" ? "checked" : ""} onchange="alternarTema()" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div style="border-top:1px solid var(--line);"></div>
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:14px; gap:10px;">
             <span style="font-size:13.5px;">Notificaciones de mantenimiento</span>
             ${estadoNotificaciones()}
           </div>
@@ -1748,6 +1938,17 @@ function screenPerfil(){
             ${svg('chevronRight',18,'#5B7A93')}
           </button>
         </div>
+
+        <div style="margin-top:22px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Consumo eléctrico</div>
+        <div class="card" style="margin-top:8px;">
+          <label class="field-label" style="margin-top:0;">Costo de electricidad ($/kWh)</label>
+          <input class="field-input" id="pf-kwh" type="number" step="0.001" min="0" value="${p.precioKwh!=null ? p.precioKwh : ""}" placeholder="Ej: 0.10" />
+          <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px; line-height:1.4;">
+            Se usa para estimar el costo mensual de tus equipos en la pantalla de cada uno.
+          </div>
+          <button class="btn-primary" style="margin-top:12px;" onclick="guardarPerfil()">GUARDAR DATOS</button>
+        </div>
+
 
         <div style="margin-top:22px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Datos</div>
         <div class="card" style="margin-top:8px;">
@@ -1778,7 +1979,9 @@ function guardarPerfil(){
   const nombre = document.getElementById("pf-nombre").value.trim();
   const correo = document.getElementById("pf-correo").value.trim();
   const telefono = document.getElementById("pf-telefono").value.trim();
-  state.perfil = { nombre, correo, telefono };
+  const kwhRaw = document.getElementById("pf-kwh").value;
+  const precioKwh = kwhRaw !== "" ? Number(kwhRaw) : null;
+  state.perfil = { nombre, correo, telefono, precioKwh };
   savePerfil(state.perfil);
   showToast("Datos guardados");
   render();
