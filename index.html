@@ -12,7 +12,7 @@
     if(t === "dark") document.documentElement.setAttribute("data-theme","dark");
   }catch(e){}
 </script>
-<meta name="theme-color" content="#0E63B0" />
+<meta name="theme-color" content="var(--primary)" />
 <link rel="apple-touch-icon" href="icon-192.png" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -99,11 +99,11 @@
 
   /* ---------- Diseño de escritorio ---------- */
   @media (min-width: 900px){
-    body{ background:#EEF3F8; }
+    body{ background:var(--bg); }
     #shell{ max-width:1180px; margin:0 auto; }
     #sidebar{
       display:flex; flex-direction:column; width:240px; flex-shrink:0;
-      padding:28px 16px; gap:6px; background:#fff; border-right:1px solid var(--line);
+      padding:28px 16px; gap:6px; background:var(--card); border-right:1px solid var(--line);
       min-height:100vh;
     }
     .sidebar-logo{
@@ -245,7 +245,7 @@
   }
   .confirm-overlay.show{ display:flex; }
   .confirm-box{
-    background:#fff; border-radius:18px; padding:22px 20px; max-width:340px; width:100%;
+    background:var(--card); border-radius:18px; padding:22px 20px; max-width:340px; width:100%;
     box-shadow:0 20px 40px rgba(11,42,69,0.25);
   }
   .confirm-box p{ margin:0 0 20px; font-size:14px; color:var(--ink); line-height:1.5; }
@@ -653,7 +653,7 @@ function openEquipo(id){
 function topBar(title, showBack, rightHtml){
   return `
     <div class="topbar">
-      <div style="width:32px;">${showBack ? `<button class="iconbtn" onclick="go('${showBack}')">${svg('chevronLeft',22,'#0B2A45')}</button>` : ""}</div>
+      <div style="width:32px;">${showBack ? `<button class="iconbtn" onclick="go('${showBack}')">${svg('chevronLeft',22,'var(--ink)')}</button>` : ""}</div>
       <div class="title">${title}</div>
       <div style="width:32px; display:flex; justify-content:flex-end;">${rightHtml||""}</div>
     </div>`;
@@ -673,7 +673,7 @@ function bottomNav(active){
     const isActive = active===it.key;
     const target = it.key;
     return `<button class="navbtn ${isActive?'active':''}" onclick="go('${target}')">
-      ${svg(it.icon,18, isActive?'#0E63B0':'#5B7A93')}
+      ${svg(it.icon,18, isActive?'var(--primary)':'var(--ink-soft)')}
       <span>${it.label}</span>
     </button>`;
   }).join("")}</div>`;
@@ -687,7 +687,7 @@ function screenHome(){
     return `
       <div class="screen">
         <div style="padding: 14px 20px 0; display:flex; justify-content:flex-end;">
-          <button class="iconbtn">${svg('bell',22,'#0B2A45')}</button>
+          <button class="iconbtn">${svg('bell',22,'var(--ink)')}</button>
         </div>
         <div class="scroll" style="display:flex; flex-direction:column;">
           <div style="font-size:22px; font-weight:800;">¡Hola${state.perfil.nombre ? ", " + state.perfil.nombre : ""}!</div>
@@ -715,7 +715,7 @@ function screenHome(){
   return `
     <div class="screen">
       <div style="padding: 14px 20px 0; display:flex; justify-content:flex-end;">
-        <button class="iconbtn">${svg('bell',22,'#0B2A45')}</button>
+        <button class="iconbtn">${svg('bell',22,'var(--ink)')}</button>
       </div>
       <div class="scroll">
         <div style="font-size:22px; font-weight:800;">¡Hola${state.perfil.nombre ? ", " + state.perfil.nombre : ""}!</div>
@@ -733,7 +733,7 @@ function screenHome(){
           <div class="card" style="margin-top:10px; cursor:pointer;" onclick="openEquipo(${eq.id})">
             <div style="font-size:15px; font-weight:700;">${eq.nombre} – ${eq.marca}</div>
             <div style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:13.5px;">
-              ${svg('calendar',16,'#0E63B0')} ${fechaLarga(eq.proximo)}
+              ${svg('calendar',16,'var(--primary)')} ${fechaLarga(eq.proximo)}
             </div>
             <div style="font-size:12.5px; color:var(--mint); font-weight:700; margin-top:2px;">
               ${dias>=0 ? `(faltan ${dias} día${dias===1?'':'s'})` : `(venció hace ${Math.abs(dias)} día${Math.abs(dias)===1?'':'s'})`}
@@ -753,7 +753,7 @@ function screenEquipos(){
   if(state.equipos.length === 0){
     return `
       <div class="screen">
-        ${topBar("Mis Equipos","home", `<div style="display:flex; gap:6px;"><button class="iconbtn" onclick="go('agenda')">${svg('calendarDays',20,'#0B2A45')}</button><button class="iconbtn" onclick="go('agregarEquipo')">${svg('plus',22,'#0B2A45')}</button></div>`)}
+        ${topBar("Mis Equipos","home", `<div style="display:flex; gap:6px;"><button class="iconbtn" onclick="go('agenda')">${svg('calendarDays',20,'var(--ink)')}</button><button class="iconbtn" onclick="go('agregarEquipo')">${svg('plus',22,'var(--ink)')}</button></div>`)}
         <div class="scroll" style="display:flex; flex-direction:column; align-items:center; text-align:center; padding-top:60px;">
           <div style="width:76px;height:76px;border-radius:20px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center; padding:12px;">
             <img src="ac-unit.png" alt="" style="width:100%; height:100%; object-fit:contain;" />
@@ -814,7 +814,7 @@ function screenEquipos(){
                 <div style="font-size:12.5px; font-weight:700;">${eq.nombre}</div>
                 <div style="font-size:11px; color:var(--ink-soft);">${eq.marca}</div>
               </div>
-              ${svg('chevronRight',15,'#5B7A93')}
+              ${svg('chevronRight',15,'var(--ink-soft)')}
             </button>`).join("")}
         </div>
       </div>`;
@@ -836,7 +836,7 @@ function screenEquipos(){
               ${filtroSucio ? `<div class="chip chip-warn">Filtro sucio</div>` : ""}
             </div>
           </div>
-          <div style="align-self:center;">${svg('chevronRight',18,'#5B7A93')}</div>
+          <div style="align-self:center;">${svg('chevronRight',18,'var(--ink-soft)')}</div>
         </div>
       </a>`;
     }).join("");
@@ -845,7 +845,7 @@ function screenEquipos(){
 
   return `
     <div class="screen">
-      ${topBar("Mis Equipos","home", `<div style="display:flex; gap:6px;"><button class="iconbtn" onclick="go('agenda')">${svg('calendarDays',20,'#0B2A45')}</button><button class="iconbtn" onclick="go('agregarEquipo')">${svg('plus',22,'#0B2A45')}</button></div>`)}
+      ${topBar("Mis Equipos","home", `<div style="display:flex; gap:6px;"><button class="iconbtn" onclick="go('agenda')">${svg('calendarDays',20,'var(--ink)')}</button><button class="iconbtn" onclick="go('agregarEquipo')">${svg('plus',22,'var(--ink)')}</button></div>`)}
       <div class="scroll">
         ${toggleBar}
         ${buscadorHtml}
@@ -949,7 +949,7 @@ function screenDetalle(){
 
   return `
     <div class="screen">
-      ${topBar("Detalle del Equipo","equipos", `<button class="iconbtn" onclick="go('editarEquipo')">${svg('edit',19,'#0B2A45')}</button>`)}
+      ${topBar("Detalle del Equipo","equipos", `<button class="iconbtn" onclick="go('editarEquipo')">${svg('edit',19,'var(--ink)')}</button>`)}
       <div class="scroll">
         <div style="display:flex; gap:14px; align-items:center;">
           <div style="width:96px;height:96px;border-radius:20px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center; padding:14px; flex-shrink:0;">
@@ -1510,7 +1510,7 @@ function screenHistorial(){
           <div style="display:flex; align-items:center; gap:10px;">
             <button class="iconbtn" style="padding:2px; margin:-2px;" onclick="event.stopPropagation(); editarHistorialItem('${h.equipoId}','${h.id}')">${svg('edit',16,'var(--primary)')}</button>
             <button class="iconbtn" style="padding:2px; margin:-2px;" onclick="event.stopPropagation(); eliminarHistorialItem('${h.equipoId}','${h.id}')">${svg('trash',16,'#D64545')}</button>
-            ${svg('chevronRight',16,'#5B7A93')}
+            ${svg('chevronRight',16,'var(--ink-soft)')}
           </div>
         </div>
         <div style="font-size:12px; color:var(--primary); font-weight:700; margin-top:2px;">${h.equipo} · ${h.tipo}${(h.precio!==undefined && h.precio!==null) ? ` · $${Number(h.precio).toFixed(2)}` : ""} ${h.realizado ? '' : '· <span style="color:var(--warn);">Pendiente</span>'}</div>
@@ -1532,11 +1532,11 @@ function screenHistorial(){
 
   return `
     <div class="screen">
-      ${topBar("Historial de Mantenimientos","home", `<button class="iconbtn" onclick="toggleFiltroHistorial()">${svg('filter',18, filtro? 'var(--primary)':'#0B2A45')}</button>`)}
+      ${topBar("Historial de Mantenimientos","home", `<button class="iconbtn" onclick="toggleFiltroHistorial()">${svg('filter',18, filtro? 'var(--primary)':'var(--ink)')}</button>`)}
       ${state.historialFiltroAbierto ? filtroBar : ""}
       <div class="scroll">${filtered.length ? rows : `
         <div style="display:flex; flex-direction:column; align-items:center; text-align:center; padding-top:60px;">
-          ${svg('clock',36,'#5B7A93')}
+          ${svg('clock',36,'var(--ink-soft)')}
           <div style="font-weight:700; font-size:14.5px; margin-top:14px;">${all.length? 'Sin registros para este equipo' : 'Sin registros todavía'}</div>
           <div style="font-size:12.5px; color:var(--ink-soft); margin-top:6px; max-width:240px;">
             ${all.length? 'Prueba cambiando el filtro de arriba.' : 'Aquí verás el historial una vez que registres tu primer mantenimiento.'}
@@ -1869,7 +1869,7 @@ function screenPerfil(){
       <div class="scroll">
         <div style="display:flex; align-items:center; gap:14px;">
           <div style="width:56px;height:56px;border-radius:999px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center;">
-            ${inicial ? `<span style="font-size:20px; font-weight:800; color:var(--primary);">${inicial}</span>` : svg('user',26,'#0E63B0')}
+            ${inicial ? `<span style="font-size:20px; font-weight:800; color:var(--primary);">${inicial}</span>` : svg('user',26,'var(--primary)')}
           </div>
           <div>
             <div style="font-weight:800; font-size:16px;">${p.nombre || "Mi cuenta"}</div>
@@ -1935,7 +1935,7 @@ function screenPerfil(){
           <div style="border-top:1px solid var(--line);"></div>
           <button onclick="go('consejos')" style="width:100%; background:none; border:none; display:flex; justify-content:space-between; align-items:center; padding:14px; text-align:left;">
             <span style="font-size:13.5px; color:var(--ink);">Consejos de cuidado</span>
-            ${svg('chevronRight',18,'#5B7A93')}
+            ${svg('chevronRight',18,'var(--ink-soft)')}
           </button>
         </div>
 
@@ -2016,7 +2016,7 @@ function updateMobileTopbarProfile(){
   if(!btn) return;
   const isActive = state.screen === "perfil";
   btn.classList.toggle("active", isActive);
-  btn.innerHTML = svg("user", 17, isActive ? "#0E63B0" : "#5B7A93");
+  btn.innerHTML = svg("user", 17, isActive ? "var(--primary)" : "var(--ink-soft)");
 }
 
 function updateSidebarActive(){
