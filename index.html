@@ -200,6 +200,7 @@
     <div class="sidebar-nav">
       <button class="sidebar-link" data-screen="home" onclick="go('home')"><span class="sb-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/></svg></span>Inicio</button>
       <button class="sidebar-link" data-screen="equipos" onclick="go('equipos')"><span class="sb-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h11a3 3 0 1 0-3-3"/><path d="M2 13h15a3 3 0 1 1-3 3"/><path d="M4 18h9a2.5 2.5 0 1 0-2.5-2.5"/></svg></span>Mis Equipos</button>
+      <button class="sidebar-link" data-screen="agenda" onclick="go('agenda')"><span class="sb-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/></svg></span>Agenda</button>
       <button class="sidebar-link" data-screen="historial" onclick="go('historial')"><span class="sb-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></span>Historial</button>
       <button class="sidebar-link" data-screen="consejos" onclick="go('consejos')"><span class="sb-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 4 13c0-6 6-11 16-11-1 9-6 16-11 18z"/><path d="M4 20 15 9"/></svg></span>Consejos</button>
       <button class="sidebar-link" data-screen="perfil" onclick="go('perfil')"><span class="sb-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></span>Perfil</button>
@@ -242,7 +243,12 @@ const ICON = {
   leaf: `<path d="M11 20A7 7 0 0 1 4 13c0-6 6-11 16-11-1 9-6 16-11 18z"/><path d="M4 20 15 9"/>`,
   wrench: `<path d="M14.7 6.3a4 4 0 1 1-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 1 5.4-5.4L21 6l-3-3z"/>`,
   user: `<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>`,
-  trash: `<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"/><path d="M10 11v6M14 11v6"/>`
+  trash: `<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"/><path d="M10 11v6M14 11v6"/>`,
+  phone: `<path d="M4.5 4.5c1-1 2.3-1 3 .2l1.3 2.1c.5.8.3 1.8-.4 2.4l-1 .9c.6 1.8 2.2 3.4 4 4l.9-1c.6-.7 1.6-.9 2.4-.4l2.1 1.3c1.2.7 1.2 2 .2 3l-.9.9c-1 1-2.6 1.3-4.3.6-3-1.2-6.2-4.4-7.4-7.4-.7-1.7-.4-3.3.6-4.3z"/>`,
+  whatsapp: `<path d="M6 18l1.1-3.2A6.8 6.8 0 1 1 10 17l-4 1z"/><path d="M8.8 9.6c0 3 2.6 5.6 5.6 5.6"/>`,
+  mapPin: `<path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>`,
+  cash: `<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 9v.01M18 15v.01"/>`,
+  calendarDays: `<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/>`
 };
 function svg(name, size=20, color="currentColor", strokeW=2){
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="${strokeW}" stroke-linecap="round" stroke-linejoin="round">${ICON[name]||""}</svg>`;
@@ -352,6 +358,23 @@ function fechaLarga(str){
 }
 function nextId(){
   return state.equipos.reduce((max,e)=>Math.max(max,e.id),0) + 1;
+}
+
+function limpiarTelefono(tel){
+  if(!tel) return "";
+  return tel.replace(/[^\d+]/g,"");
+}
+
+function linkWhatsApp(tel, mensaje){
+  const limpio = limpiarTelefono(tel).replace(/^\+/,"");
+  return `https://wa.me/${limpio}?text=${encodeURIComponent(mensaje)}`;
+}
+
+function mensajeRecordatorio(eq){
+  const cliente = eq.cliente ? eq.cliente.split(" ")[0] : "";
+  const saludo = cliente ? `Hola ${cliente}` : "Hola";
+  const fecha = eq.proximo ? fechaLarga(eq.proximo) : "próximamente";
+  return `${saludo}, te escribimos de AiresCare para recordarte que el mantenimiento de tu aire acondicionado (${eq.nombre}${eq.marca && eq.marca!=='Sin especificar' ? ' - '+eq.marca : ''}) está programado para el ${fecha}. Cualquier consulta, quedamos atentos. ¡Gracias!`;
 }
 
 function showToast(msg){
@@ -484,7 +507,10 @@ function screenHome(){
           <div style="font-size:12.5px; color:var(--mint); font-weight:700; margin-top:2px;">
             ${dias>=0 ? `(faltan ${dias} día${dias===1?'':'s'})` : `(venció hace ${Math.abs(dias)} día${Math.abs(dias)===1?'':'s'})`}
           </div>
-          <button class="btn-primary" style="margin-top:14px;" onclick="go('equipos')">VER MIS EQUIPOS</button>
+          <div style="display:flex; gap:8px; margin-top:14px;">
+            <button class="btn-outline" style="flex:1;" onclick="go('agenda')">VER AGENDA</button>
+            <button class="btn-primary" style="flex:1;" onclick="go('equipos')">MIS EQUIPOS</button>
+          </div>
         </div>` : `
         <div class="card" style="margin-top:18px;">
           <div style="font-size:13.5px; color:var(--ink-soft);">Ninguno de tus equipos tiene mantenimiento programado todavía.</div>
@@ -499,7 +525,7 @@ function screenEquipos(){
   if(state.equipos.length === 0){
     return `
       <div class="screen">
-        ${topBar("Mis Equipos","home", `<button class="iconbtn" onclick="go('agregarEquipo')">${svg('plus',22,'#0B2A45')}</button>`)}
+        ${topBar("Mis Equipos","home", `<div style="display:flex; gap:6px;"><button class="iconbtn" onclick="go('agenda')">${svg('calendarDays',20,'#0B2A45')}</button><button class="iconbtn" onclick="go('agregarEquipo')">${svg('plus',22,'#0B2A45')}</button></div>`)}
         <div class="scroll" style="display:flex; flex-direction:column; align-items:center; text-align:center; padding-top:60px;">
           <div style="width:64px;height:64px;border-radius:20px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center;">
             ${svg('ac',30,'#0E63B0')}
@@ -518,7 +544,7 @@ function screenEquipos(){
       <div class="card" style="display:flex; gap:12px; margin-bottom:12px;">
         <div class="equipo-icon">${svg('ac',22,'#0E63B0')}</div>
         <div style="flex:1;">
-          <div style="font-weight:700; font-size:14.5px;">${eq.nombre}</div>
+          <div style="font-weight:700; font-size:14.5px;">${eq.nombre}${eq.cliente ? ` · ${eq.cliente}` : ""}</div>
           <div style="font-size:12.5px; color:var(--ink-soft);">${eq.marca}</div>
           <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">Instalado: ${eq.instalado}</div>
           <div style="font-size:11.5px; color:var(--ink-soft);">Último mantenimiento: ${eq.ultimo || "Aún sin mantenimiento"}</div>
@@ -530,7 +556,7 @@ function screenEquipos(){
   }).join("");
   return `
     <div class="screen">
-      ${topBar("Mis Equipos","home", `<button class="iconbtn" onclick="go('agregarEquipo')">${svg('plus',22,'#0B2A45')}</button>`)}
+      ${topBar("Mis Equipos","home", `<div style="display:flex; gap:6px;"><button class="iconbtn" onclick="go('agenda')">${svg('calendarDays',20,'#0B2A45')}</button><button class="iconbtn" onclick="go('agregarEquipo')">${svg('plus',22,'#0B2A45')}</button></div>`)}
       <div class="scroll"><div class="grid-cards">${rows}</div></div>
       ${bottomNav("equipos")}
     </div>`;
@@ -545,6 +571,25 @@ function screenDetalle(){
     ["Último mantenimiento", eq.ultimo || "Aún sin mantenimiento"],
     ["Próximo mantenimiento", eq.proximo || "Sin programar", true]
   ];
+  const tieneTelefono = !!limpiarTelefono(eq.telefono);
+  const clienteCard = (eq.cliente || eq.telefono || eq.direccion) ? `
+    <div style="margin-top:20px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Cliente</div>
+    <div class="card" style="margin-top:8px;">
+      ${eq.cliente ? `<div style="font-weight:700; font-size:14.5px;">${eq.cliente}</div>` : ""}
+      ${eq.telefono ? `<div style="font-size:12.5px; color:var(--ink-soft); margin-top:2px;">${eq.telefono}</div>` : ""}
+      ${eq.direccion ? `<div style="font-size:12.5px; color:var(--ink-soft); margin-top:2px;">${eq.direccion}</div>` : ""}
+      <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
+        ${tieneTelefono ? `<a href="tel:${limpiarTelefono(eq.telefono)}" style="flex:1; min-width:100px; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:var(--chip-bg); color:var(--primary); border-radius:10px; padding:10px 8px; font-size:12.5px; font-weight:700;">${svg('phone',15,'var(--primary)')} Llamar</a>` : ""}
+        ${tieneTelefono ? `<a href="${linkWhatsApp(eq.telefono, mensajeRecordatorio(eq))}" target="_blank" rel="noopener" style="flex:1; min-width:100px; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:#E4F6EF; color:var(--mint); border-radius:10px; padding:10px 8px; font-size:12.5px; font-weight:700;">${svg('whatsapp',15,'var(--mint)')} WhatsApp</a>` : ""}
+        ${eq.direccion ? `<a href="https://maps.google.com/?q=${encodeURIComponent(eq.direccion)}" target="_blank" rel="noopener" style="flex:1; min-width:100px; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:var(--chip-bg); color:var(--primary); border-radius:10px; padding:10px 8px; font-size:12.5px; font-weight:700;">${svg('mapPin',15,'var(--primary)')} Cómo llegar</a>` : ""}
+      </div>
+    </div>` : `
+    <div style="margin-top:20px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Cliente</div>
+    <div class="card" style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
+      <span style="font-size:12.5px; color:var(--ink-soft);">Sin datos de contacto registrados</span>
+      <button class="iconbtn" onclick="go('editarEquipo')">${svg('edit',16,'var(--primary)')}</button>
+    </div>`;
+
   return `
     <div class="screen">
       ${topBar("Detalle del Equipo","equipos", `<button class="iconbtn" onclick="go('editarEquipo')">${svg('edit',19,'#0B2A45')}</button>`)}
@@ -559,6 +604,7 @@ function screenDetalle(){
             <span style="display:inline-block;margin-top:4px;background:#E4F6EF;color:var(--mint);font-size:11px;font-weight:700;padding:2px 10px;border-radius:999px;">${eq.estado}</span>
           </div>
         </div>
+        ${clienteCard}
         <div style="margin-top:20px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Información</div>
         <div class="card" style="margin-top:8px; padding:4px;">
           ${rows.map(([label,val,hl],i)=>`
@@ -580,7 +626,18 @@ function screenAgregarEquipo(){
     <div class="screen">
       ${topBar("Registrar Equipo", state.equipos.length ? "equipos" : "home")}
       <div class="scroll">
-        <label class="field-label">Nombre / Ubicación</label>
+        <div style="font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Datos del cliente</div>
+        <label class="field-label" style="margin-top:8px;">Nombre del cliente</label>
+        <input class="field-input" id="ne-cliente" type="text" placeholder="Ej: María Torres" />
+
+        <label class="field-label">Teléfono / WhatsApp</label>
+        <input class="field-input" id="ne-telefono" type="tel" placeholder="Ej: 0991234567" />
+
+        <label class="field-label">Dirección</label>
+        <input class="field-input" id="ne-direccion" type="text" placeholder="Ej: Av. Principal 123, Guayaquil" />
+
+        <div style="font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px; margin-top:22px;">Datos del equipo</div>
+        <label class="field-label" style="margin-top:8px;">Nombre / Ubicación</label>
         <input class="field-input" id="ne-nombre" type="text" placeholder="Ej: Sala, Dormitorio, Oficina" />
 
         <label class="field-label">Marca y modelo</label>
@@ -599,6 +656,9 @@ function screenAgregarEquipo(){
 }
 
 function registrarEquipo(){
+  const cliente = document.getElementById("ne-cliente").value.trim();
+  const telefono = document.getElementById("ne-telefono").value.trim();
+  const direccion = document.getElementById("ne-direccion").value.trim();
   const nombre = document.getElementById("ne-nombre").value.trim();
   const marca = document.getElementById("ne-marca").value.trim();
   const capacidad = document.getElementById("ne-capacidad").value.trim();
@@ -611,6 +671,9 @@ function registrarEquipo(){
 
   const nuevo = {
     id: nextId(),
+    cliente: cliente || "",
+    telefono: telefono || "",
+    direccion: direccion || "",
     nombre,
     marca: marca || "Sin especificar",
     capacidad: capacidad || "Sin especificar",
@@ -633,7 +696,18 @@ function screenEditarEquipo(){
     <div class="screen">
       ${topBar("Editar Equipo","detalle")}
       <div class="scroll">
-        <label class="field-label">Nombre / Ubicación</label>
+        <div style="font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Datos del cliente</div>
+        <label class="field-label" style="margin-top:8px;">Nombre del cliente</label>
+        <input class="field-input" id="ee-cliente" type="text" value="${eq.cliente||""}" placeholder="Ej: María Torres" />
+
+        <label class="field-label">Teléfono / WhatsApp</label>
+        <input class="field-input" id="ee-telefono" type="tel" value="${eq.telefono||""}" placeholder="Ej: 0991234567" />
+
+        <label class="field-label">Dirección</label>
+        <input class="field-input" id="ee-direccion" type="text" value="${eq.direccion||""}" placeholder="Ej: Av. Principal 123, Guayaquil" />
+
+        <div style="font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px; margin-top:22px;">Datos del equipo</div>
+        <label class="field-label" style="margin-top:8px;">Nombre / Ubicación</label>
         <input class="field-input" id="ee-nombre" type="text" value="${eq.nombre||""}" placeholder="Ej: Sala, Dormitorio, Oficina" />
 
         <label class="field-label">Marca y modelo</label>
@@ -655,6 +729,9 @@ function screenEditarEquipo(){
 function guardarEdicionEquipo(){
   const eq = state.equipos.find(e=>e.id===state.equipoSelId);
   if(!eq) return;
+  const cliente = document.getElementById("ee-cliente").value.trim();
+  const telefono = document.getElementById("ee-telefono").value.trim();
+  const direccion = document.getElementById("ee-direccion").value.trim();
   const nombre = document.getElementById("ee-nombre").value.trim();
   const marca = document.getElementById("ee-marca").value.trim();
   const capacidad = document.getElementById("ee-capacidad").value.trim();
@@ -665,6 +742,9 @@ function guardarEdicionEquipo(){
     return;
   }
 
+  eq.cliente = cliente || "";
+  eq.telefono = telefono || "";
+  eq.direccion = direccion || "";
   eq.nombre = nombre;
   eq.marca = marca || "Sin especificar";
   eq.capacidad = capacidad || "Sin especificar";
@@ -721,6 +801,9 @@ function screenAgendar(){
         <label class="field-label">Técnico (opcional)</label>
         <input class="field-input" id="f-tecnico" type="text" placeholder="Nombre del técnico" />
 
+        <label class="field-label">Precio cobrado (opcional)</label>
+        <input class="field-input" id="f-precio" type="number" min="0" step="0.01" placeholder="Ej: 25.00" />
+
         <label class="field-label">Notas (opcional)</label>
         <textarea class="field-input" id="f-notas" style="min-height:70px; resize:none;" placeholder="Ej: limpieza de filtros, revisión de gas, etc."></textarea>
 
@@ -735,6 +818,8 @@ function guardarMantenimiento(){
   const fechaISO = document.getElementById("f-fecha").value;
   const tipo = document.getElementById("f-tipo").value;
   const tecnico = document.getElementById("f-tecnico").value;
+  const precioRaw = document.getElementById("f-precio").value;
+  const precio = precioRaw ? Number(precioRaw) : null;
   const notas = document.getElementById("f-notas").value;
   const hoyISO = new Date().toISOString().slice(0,10);
   const fecha = fechaISOaDMY(fechaISO || hoyISO);
@@ -742,7 +827,7 @@ function guardarMantenimiento(){
   const eq = state.equipos.find(e=>e.id===equipoId);
   if(eq){
     eq.proximo = fecha;
-    eq.historial.unshift({id: Date.now()+Math.random().toString(36).slice(2,7), fecha, tipo, tecnico: tecnico||"Sin asignar", notas: notas||"Sin notas."});
+    eq.historial.unshift({id: Date.now()+Math.random().toString(36).slice(2,7), fecha, tipo, tecnico: tecnico||"Sin asignar", precio, notas: notas||"Sin notas."});
     saveEquipos(state.equipos);
   }
   state.lastSaved = {equipoId, fecha};
@@ -780,6 +865,57 @@ function screenNotificacion(){
     </div>`;
 }
 
+function screenAgenda(){
+  const pendientes = state.equipos
+    .filter(eq=>eq.proximo)
+    .map(eq=>({...eq, dias: diasRestantes(eq.proximo)}))
+    .sort((a,b)=>parseDMY(a.proximo)-parseDMY(b.proximo));
+
+  const rows = pendientes.map(eq=>{
+    const tieneTelefono = !!limpiarTelefono(eq.telefono);
+    let etiqueta, colorEtiqueta;
+    if(eq.dias < 0){ etiqueta = `Venció hace ${Math.abs(eq.dias)} día${Math.abs(eq.dias)===1?'':'s'}`; colorEtiqueta = "#D64545"; }
+    else if(eq.dias === 0){ etiqueta = "Hoy"; colorEtiqueta = "#D64545"; }
+    else if(eq.dias === 1){ etiqueta = "Mañana"; colorEtiqueta = "var(--warn)"; }
+    else { etiqueta = `En ${eq.dias} días`; colorEtiqueta = "var(--mint)"; }
+
+    return `
+    <div class="card" style="margin-bottom:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; cursor:pointer;" onclick="openEquipo(${eq.id})">
+        <div>
+          <div style="font-weight:700; font-size:14.5px;">${eq.nombre}${eq.cliente ? ` · ${eq.cliente}` : ""}</div>
+          <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${eq.marca}</div>
+          <div style="display:flex; align-items:center; gap:6px; margin-top:6px; font-size:12.5px;">
+            ${svg('calendar',14,'var(--ink-soft)')} ${eq.proximo}
+          </div>
+        </div>
+        <span style="background:${colorEtiqueta}1a; color:${colorEtiqueta}; font-size:11px; font-weight:700; padding:4px 10px; border-radius:999px; white-space:nowrap;">${etiqueta}</span>
+      </div>
+      ${tieneTelefono ? `
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <a href="tel:${limpiarTelefono(eq.telefono)}" style="flex:1; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:var(--chip-bg); color:var(--primary); border-radius:10px; padding:9px 8px; font-size:12px; font-weight:700;">${svg('phone',14,'var(--primary)')} Llamar</a>
+        <a href="${linkWhatsApp(eq.telefono, mensajeRecordatorio(eq))}" target="_blank" rel="noopener" style="flex:1; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:#E4F6EF; color:var(--mint); border-radius:10px; padding:9px 8px; font-size:12px; font-weight:700;">${svg('whatsapp',14,'var(--mint)')} Recordar</a>
+      </div>` : ""}
+    </div>`;
+  }).join("");
+
+  return `
+    <div class="screen">
+      ${topBar("Agenda","home")}
+      <div class="scroll">
+        ${pendientes.length ? rows : `
+        <div style="display:flex; flex-direction:column; align-items:center; text-align:center; padding-top:60px;">
+          ${svg('calendarDays',36,'#5B7A93')}
+          <div style="font-weight:700; font-size:14.5px; margin-top:14px;">No hay mantenimientos programados</div>
+          <div style="font-size:12.5px; color:var(--ink-soft); margin-top:6px; max-width:240px;">
+            Programa un mantenimiento desde un equipo para verlo aquí.
+          </div>
+        </div>`}
+      </div>
+      ${bottomNav("home")}
+    </div>`;
+}
+
 function screenHistorial(){
   const all = state.equipos.flatMap(eq=>eq.historial.map(h=>({...h, equipo:eq.nombre, equipoId:eq.id})))
     .sort((a,b)=>parseDMY(b.fecha)-parseDMY(a.fecha));
@@ -798,7 +934,7 @@ function screenHistorial(){
             ${svg('chevronRight',16,'#5B7A93')}
           </div>
         </div>
-        <div style="font-size:12px; color:var(--primary); font-weight:700; margin-top:2px;">${h.equipo} · ${h.tipo}</div>
+        <div style="font-size:12px; color:var(--primary); font-weight:700; margin-top:2px;">${h.equipo} · ${h.tipo}${(h.precio!==undefined && h.precio!==null) ? ` · $${Number(h.precio).toFixed(2)}` : ""}</div>
         <div style="font-size:12px; color:var(--ink-soft); margin-top:4px;">Técnico: ${h.tecnico}</div>
         <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">Notas: ${h.notas}</div>
       </div>
@@ -911,6 +1047,18 @@ function screenPerfil(){
   const p = state.perfil;
   const inicial = p.nombre ? p.nombre.trim().charAt(0).toUpperCase() : null;
 
+  const hoy = new Date();
+  let ingresosMes = 0, ingresosTotal = 0;
+  state.equipos.forEach(eq=>{
+    eq.historial.forEach(h=>{
+      if(h.precio===undefined || h.precio===null) return;
+      const precio = Number(h.precio) || 0;
+      ingresosTotal += precio;
+      const d = parseDMY(h.fecha);
+      if(d.getMonth()===hoy.getMonth() && d.getFullYear()===hoy.getFullYear()) ingresosMes += precio;
+    });
+  });
+
   return `
     <div class="screen">
       ${topBar("Perfil","home")}
@@ -937,6 +1085,18 @@ function screenPerfil(){
           <div class="card" style="flex:1; text-align:center; padding:14px 8px;">
             <div style="font-size:19px; font-weight:800; color:var(--primary);">${proximos}</div>
             <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">Programados</div>
+          </div>
+        </div>
+
+        <div style="margin-top:22px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Ingresos</div>
+        <div class="card" style="margin-top:8px; display:flex; gap:10px;">
+          <div style="flex:1; text-align:center; padding:6px 4px; border-right:1px solid var(--line);">
+            <div style="font-size:20px; font-weight:800; color:var(--mint);">$${ingresosMes.toFixed(2)}</div>
+            <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">Este mes</div>
+          </div>
+          <div style="flex:1; text-align:center; padding:6px 4px;">
+            <div style="font-size:20px; font-weight:800; color:var(--ink);">$${ingresosTotal.toFixed(2)}</div>
+            <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">Histórico</div>
           </div>
         </div>
 
@@ -1013,6 +1173,7 @@ function render(){
     agendar: screenAgendar,
     notificacion: screenNotificacion,
     historial: screenHistorial,
+    agenda: screenAgenda,
     consejos: screenConsejos,
     perfil: screenPerfil
   };
@@ -1025,6 +1186,7 @@ function updateSidebarActive(){
   const group = {
     home:"home", notificacion:"home",
     equipos:"equipos", detalle:"equipos", agregarEquipo:"equipos", editarEquipo:"equipos", agendar:"equipos",
+    agenda:"agenda",
     historial:"historial",
     consejos:"consejos",
     perfil:"perfil"
