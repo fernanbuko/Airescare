@@ -53,7 +53,10 @@
   }
   [data-theme="dark"] body{ background:var(--bg); }
   [data-theme="dark"] .install-banner{ background:#0B1622; }
-  [data-theme="dark"] img[src$=".png"]{ filter:none; }
+  [data-theme="dark"] img[src="ac-unit.png"],
+  [data-theme="dark"] img[src="ac-hero.png"]{
+    filter: invert(0.9) hue-rotate(180deg);
+  }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
   body{
