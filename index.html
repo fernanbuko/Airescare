@@ -491,7 +491,9 @@ function esInverter(eq){
 function estimarConsumo(eq){
   const btu = parseBTU(eq.capacidad);
   if(!btu) return null;
-  const horas = (eq.horasUso!=null && eq.horasUso!=="") ? Number(eq.horasUso) : 8;
+  if(eq.horasUso==null || eq.horasUso==="") return null;
+  const horas = Number(eq.horasUso);
+  if(!horas || horas<=0) return null;
   // Regla práctica: watts ≈ BTU / 10 (EER promedio de referencia) para convencional.
   // Un equipo Inverter modula el compresor y consume, en promedio, ~35% menos.
   const inverter = esInverter(eq);
@@ -930,6 +932,8 @@ function screenDetalle(){
     </div>`;
 
   const consumo = estimarConsumo(eq);
+  const faltaBTU = !parseBTU(eq.capacidad);
+  const faltaHoras = !faltaBTU && (eq.horasUso==null || eq.horasUso==="" || Number(eq.horasUso)<=0);
   const consumoCard = consumo ? `
     <div style="margin-top:20px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Consumo eléctrico estimado</div>
     <div class="card" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:10px;">
@@ -955,8 +959,8 @@ function screenDetalle(){
       Estimado con ${consumo.horas} h de uso al día · ${consumo.inverter ? 'Inverter' : 'Convencional'}${consumo.costoMes==null ? '. Agrega el costo del kWh en tu Perfil para ver el gasto mensual.' : '.'}
     </div>` : `
     <div style="margin-top:20px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Consumo eléctrico estimado</div>
-    <div class="card" style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
-      <span style="font-size:12.5px; color:var(--ink-soft);">Registra la capacidad en BTU del equipo para estimarlo</span>
+    <div class="card" style="margin-top:8px; display:flex; justify-content:space-between; align-items:center; gap:10px;">
+      <span style="font-size:12.5px; color:var(--ink-soft);">${faltaBTU ? "Registra la capacidad en BTU del equipo para estimarlo" : "Registra las horas de uso al día para estimarlo"}</span>
       <button class="iconbtn" onclick="go('editarEquipo')">${svg('edit',16,'var(--primary)')}</button>
     </div>`;
 
