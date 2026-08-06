@@ -301,6 +301,18 @@ function savePerfil(perfil){
   try{ localStorage.setItem(PERFIL_KEY, JSON.stringify(perfil)); }catch(e){}
 }
 
+const NOTIF_LOG_KEY = "airescare_notif_log_v1";
+function loadNotifLog(){
+  try{
+    const raw = localStorage.getItem(NOTIF_LOG_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return [];
+}
+function saveNotifLog(log){
+  try{ localStorage.setItem(NOTIF_LOG_KEY, JSON.stringify(log)); }catch(e){}
+}
+
 let state = {
   screen: "home",
   equipos: loadEquipos(),
@@ -878,6 +890,20 @@ function screenConsejos(){
     </div>`;
 }
 
+function estadoNotificaciones(){
+  if(!("Notification" in window)){
+    return `<span class="chip" style="background:var(--chip-bg); color:var(--ink-soft);">No disponible</span>`;
+  }
+  const perm = Notification.permission;
+  if(perm === "granted"){
+    return `<span class="chip" style="background:#E4F6EF; color:var(--mint);">Activadas</span>`;
+  }
+  if(perm === "denied"){
+    return `<span class="chip" style="background:#FBE7E7; color:#D64545;">Bloqueadas</span>`;
+  }
+  return `<button style="background:var(--primary); color:#fff; border:none; border-radius:8px; padding:8px 12px; font-size:12.5px; font-weight:700; flex-shrink:0;" onclick="pedirPermisoNotificaciones()">Activar</button>`;
+}
+
 function screenPerfil(){
   const totalEquipos = state.equipos.length;
   const totalMantenimientos = state.equipos.reduce((sum,e)=>sum+e.historial.length, 0);
@@ -930,9 +956,9 @@ function screenPerfil(){
 
         <div style="margin-top:22px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Preferencias</div>
         <div class="card" style="margin-top:8px; padding:4px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; padding:14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:14px; gap:10px;">
             <span style="font-size:13.5px;">Notificaciones de mantenimiento</span>
-            <span class="chip">Activadas</span>
+            ${estadoNotificaciones()}
           </div>
           <div style="border-top:1px solid var(--line);"></div>
           <button onclick="go('consejos')" style="width:100%; background:none; border:none; display:flex; justify-content:space-between; align-items:center; padding:14px; text-align:left;">
@@ -1018,9 +1044,12 @@ window.addEventListener("popstate", (e) => {
 });
 
 /* ---------- Service worker + instalación ---------- */
+let swRegistration = null;
 if("serviceWorker" in navigator){
   window.addEventListener("load", ()=>{
-    navigator.serviceWorker.register("sw.js").catch(()=>{});
+    navigator.serviceWorker.register("sw.js")
+      .then(reg=>{ swRegistration = reg; })
+      .catch(()=>{});
   });
 }
 
@@ -1041,6 +1070,80 @@ document.getElementById("installBtn").addEventListener("click", async ()=>{
 window.addEventListener("appinstalled", ()=>{
   document.getElementById("installBanner").style.display = "none";
 });
+
+/* ---------- Notificaciones de mantenimiento ---------- */
+function notificacionesSoportadas(){
+  return "Notification" in window;
+}
+
+function pedirPermisoNotificaciones(){
+  if(!notificacionesSoportadas()){
+    showToast("Tu navegador no soporta notificaciones");
+    return;
+  }
+  Notification.requestPermission().then(perm=>{
+    if(perm==="granted"){
+      showToast("Notificaciones activadas");
+      revisarMantenimientosProximos(true);
+    } else if(perm==="denied"){
+      showToast("Notificaciones bloqueadas por el navegador");
+    }
+    render();
+  });
+}
+
+function enviarNotificacion(title, body, tagKey){
+  const opts = {
+    body,
+    icon: "icon-192.png",
+    badge: "icon-192.png",
+    tag: tagKey,
+    renotify: false
+  };
+  if(swRegistration && swRegistration.showNotification){
+    swRegistration.showNotification(title, opts).catch(()=>{
+      try{ new Notification(title, opts); }catch(e){}
+    });
+  } else {
+    try{ new Notification(title, opts); }catch(e){}
+  }
+}
+
+// Revisa todos los equipos y notifica los que tengan mantenimiento vencido, hoy o mañana.
+// forzar=true ignora el registro de "ya notificado" (util justo despues de activar permisos).
+function revisarMantenimientosProximos(forzar){
+  if(!notificacionesSoportadas() || Notification.permission !== "granted") return;
+  const log = forzar ? [] : loadNotifLog();
+  let changed = false;
+
+  state.equipos.forEach(eq=>{
+    if(!eq.proximo) return;
+    const dias = diasRestantes(eq.proximo);
+    if(dias > 1) return; // solo avisar si es hoy, manana, o ya se vencio
+
+    const key = `${eq.id}_${eq.proximo}`;
+    if(log.includes(key)) return;
+
+    let mensaje;
+    if(dias === 0) mensaje = `El mantenimiento de "${eq.nombre}" es hoy.`;
+    else if(dias === 1) mensaje = `El mantenimiento de "${eq.nombre}" es mañana.`;
+    else mensaje = `El mantenimiento de "${eq.nombre}" venció hace ${Math.abs(dias)} día${Math.abs(dias)===1?'':'s'}.`;
+
+    enviarNotificacion("AiresCare · Recordatorio", mensaje, key);
+    log.push(key);
+    changed = true;
+  });
+
+  if(changed) saveNotifLog(log);
+}
+
+// Revisar al abrir la app, al volver a ella, y cada 30 minutos mientras este abierta.
+revisarMantenimientosProximos(false);
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState === "visible") revisarMantenimientosProximos(false);
+});
+setInterval(()=>revisarMantenimientosProximos(false), 30*60*1000);
+
 </script>
 </body>
 </html>

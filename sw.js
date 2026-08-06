@@ -1,4 +1,4 @@
-const CACHE_NAME = "airescare-cache-v2";
+const CACHE_NAME = "airescare-cache-v3";
 const ASSETS = [
   "./",
   "./index.html",
@@ -36,3 +36,21 @@ self.addEventListener("fetch", (event) => {
       .catch(() => caches.match(event.request))
   );
 });
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientsArr) => {
+      const scopeUrl = self.registration.scope;
+      for (const client of clientsArr) {
+        if (client.url.startsWith(scopeUrl) && "focus" in client) {
+          return client.focus();
+        }
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(scopeUrl);
+      }
+    })
+  );
+});
+
