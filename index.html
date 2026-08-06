@@ -484,17 +484,23 @@ function parseBTU(capacidadStr){
   const num = Number(match[1]);
   return num > 0 ? num : null;
 }
+function esInverter(eq){
+  if(eq.tipoCompresor) return eq.tipoCompresor === "inverter";
+  return /inverter/i.test(`${eq.marca||""} ${eq.capacidad||""}`);
+}
 function estimarConsumo(eq){
   const btu = parseBTU(eq.capacidad);
   if(!btu) return null;
   const horas = (eq.horasUso!=null && eq.horasUso!=="") ? Number(eq.horasUso) : 8;
-  // Regla práctica: watts ≈ BTU / 10 (EER promedio de referencia)
-  const watts = btu / 10;
+  // Regla práctica: watts ≈ BTU / 10 (EER promedio de referencia) para convencional.
+  // Un equipo Inverter modula el compresor y consume, en promedio, ~35% menos.
+  const inverter = esInverter(eq);
+  const watts = (btu / 10) * (inverter ? 0.65 : 1);
   const kwhDia = (watts * horas) / 1000;
   const kwhMes = kwhDia * 30;
   const precioKwh = state.perfil.precioKwh;
   const costoMes = (precioKwh!=null && !isNaN(precioKwh)) ? kwhMes * Number(precioKwh) : null;
-  return { watts, horas, kwhDia, kwhMes, costoMes };
+  return { watts, horas, kwhDia, kwhMes, costoMes, inverter };
 }
 
 /* ---------- Filtro de aire ---------- */
@@ -946,7 +952,7 @@ function screenDetalle(){
       </div>` : ""}
     </div>
     <div style="font-size:11px; color:var(--ink-soft); margin-top:6px; line-height:1.4;">
-      Estimado con ${consumo.horas} h de uso al día${consumo.costoMes==null ? '. Agrega el costo del kWh en tu Perfil para ver el gasto mensual.' : '.'}
+      Estimado con ${consumo.horas} h de uso al día · ${consumo.inverter ? 'Inverter' : 'Convencional'}${consumo.costoMes==null ? '. Agrega el costo del kWh en tu Perfil para ver el gasto mensual.' : '.'}
     </div>` : `
     <div style="margin-top:20px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Consumo eléctrico estimado</div>
     <div class="card" style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
@@ -1018,6 +1024,13 @@ function screenAgregarEquipo(){
         <label class="field-label">Capacidad</label>
         <input class="field-input" id="ne-capacidad" type="text" placeholder="Ej: 12,000 BTU" />
 
+        <label class="field-label">Tipo de compresor</label>
+        <select class="field-input" id="ne-tipo">
+          <option value="">Detectar automáticamente</option>
+          <option value="inverter">Inverter</option>
+          <option value="convencional">Convencional (on/off)</option>
+        </select>
+
         <label class="field-label">Fecha de instalación</label>
         <input class="field-input" id="ne-instalado" type="date" />
 
@@ -1050,6 +1063,7 @@ function registrarEquipo(){
   const coords = obtenerCoordenadasPicker();
   const horasRaw = document.getElementById("ne-horas").value;
   const filtroISO = document.getElementById("ne-filtro").value;
+  const tipoCompresor = document.getElementById("ne-tipo").value || null;
 
   const nuevo = {
     id: nextId(),
@@ -1064,6 +1078,7 @@ function registrarEquipo(){
     instalado: instaladoISO ? fechaISOaDMY(instaladoISO) : "-",
     horasUso: horasRaw !== "" ? Number(horasRaw) : null,
     filtroLimpio: filtroISO ? fechaISOaDMY(filtroISO) : null,
+    tipoCompresor,
     ultimo: null,
     proximo: null,
     estado: "Activo",
@@ -1106,6 +1121,13 @@ function screenEditarEquipo(){
 
         <label class="field-label">Capacidad</label>
         <input class="field-input" id="ee-capacidad" type="text" value="${(eq.capacidad&&eq.capacidad!=='Sin especificar')?eq.capacidad:""}" placeholder="Ej: 12,000 BTU" />
+
+        <label class="field-label">Tipo de compresor</label>
+        <select class="field-input" id="ee-tipo">
+          <option value="" ${!eq.tipoCompresor ? "selected" : ""}>Detectar automáticamente</option>
+          <option value="inverter" ${eq.tipoCompresor==="inverter" ? "selected" : ""}>Inverter</option>
+          <option value="convencional" ${eq.tipoCompresor==="convencional" ? "selected" : ""}>Convencional (on/off)</option>
+        </select>
 
         <label class="field-label">Fecha de instalación</label>
         <input class="field-input" id="ee-instalado" type="date" value="${fechaDMYaISO(eq.instalado)}" />
@@ -1152,6 +1174,7 @@ function guardarEdicionEquipo(){
   const filtroISO = document.getElementById("ee-filtro").value;
   eq.horasUso = horasRaw !== "" ? Number(horasRaw) : null;
   eq.filtroLimpio = filtroISO ? fechaISOaDMY(filtroISO) : null;
+  eq.tipoCompresor = document.getElementById("ee-tipo").value || null;
   saveEquipos(state.equipos);
   showToast("Cambios guardados");
   go("detalle");
