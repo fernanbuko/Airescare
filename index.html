@@ -304,10 +304,10 @@ function acHero(maxWidth=210){
 const DEFAULT_EQUIPOS = [];
 
 const CONSEJOS = [
-  {icon:"filter", text:"Limpia los filtros cada 2 semanas para un mejor rendimiento."},
-  {icon:"thermo", text:"Mantén la temperatura entre 24°C y 26°C para ahorrar energía."},
-  {icon:"wrench", text:"Realiza mantenimiento preventivo cada 6 meses."},
-  {icon:"leaf", text:"Un equipo limpio consume menos energía y cuida el ambiente."}
+  {icon:"filter", img:"consejo-filtro.png", text:"Limpia los filtros cada 2 semanas para un mejor rendimiento."},
+  {icon:"thermo", img:"consejo-temp.png", text:"Mantén la temperatura entre 24°C y 26°C para ahorrar energía."},
+  {icon:"wrench", img:"consejo-mantenimiento.png", text:"Realiza mantenimiento preventivo cada 6 meses."},
+  {icon:"leaf", img:"consejo-eco.png", text:"Un equipo limpio consume menos energía y cuida el ambiente."}
 ];
 
 /* ---------- Estado / almacenamiento ---------- */
@@ -1639,7 +1639,9 @@ function eliminarHistorialItem(equipoId, historialId){
 function screenConsejos(){
   const rows = CONSEJOS.map(c=>`
     <div class="card" style="display:flex; gap:12px; align-items:center; margin-bottom:12px;">
-      <div class="equipo-icon">${svg(c.icon,20,'#0E63B0')}</div>
+      <div class="equipo-icon" style="background:var(--chip-bg); padding:6px;">
+        <img src="${c.img}" alt="" style="width:100%; height:100%; object-fit:contain;" />
+      </div>
       <div style="font-size:13px; line-height:1.4;">${c.text}</div>
     </div>`).join("");
   return `
