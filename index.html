@@ -47,6 +47,29 @@
     flex-direction:column;
     position:relative;
   }
+
+  /* En pantallas grandes (PC/tablet), mostrar la app como un mockup de celular centrado */
+  @media (min-width: 640px){
+    body{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      min-height:100vh;
+      background:
+        radial-gradient(circle at 30% 20%, rgba(14,99,176,0.10), transparent 45%),
+        radial-gradient(circle at 80% 80%, rgba(55,182,196,0.10), transparent 45%),
+        var(--bg);
+    }
+    #app{
+      width:420px;
+      height:min(880px, 94vh);
+      min-height:0;
+      border-radius:36px;
+      border:10px solid #0B2A45;
+      box-shadow:0 30px 70px rgba(11,42,69,0.30);
+      overflow:hidden;
+    }
+  }
   button, select, textarea, input{ font-family:inherit; }
   button{ cursor:pointer; }
   .screen{ display:flex; flex-direction:column; flex:1; min-height:0; }
@@ -62,8 +85,7 @@
     display:flex; justify-content:space-around; align-items:center;
     padding:10px 8px calc(env(safe-area-inset-bottom,14px) + 10px);
     border-top:1px solid var(--line); background:var(--card);
-    position:fixed; left:0; right:0; bottom:0;
-    max-width:480px; margin:0 auto;
+    position:absolute; left:0; right:0; bottom:0;
     z-index:40;
   }
   .navbtn{ background:none; border:none; display:flex; flex-direction:column; gap:2px; align-items:center; color:var(--ink-soft); font-size:10px; font-weight:600; }
