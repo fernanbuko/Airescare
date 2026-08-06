@@ -46,12 +46,21 @@
     position:fixed; top:0; left:0; right:0; z-index:50;
     max-width:480px; margin:0 auto;
     background:var(--card); border:none; border-bottom:1px solid var(--line);
-    display:flex; align-items:center; gap:8px;
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
     padding: calc(env(safe-area-inset-top,10px) + 10px) 16px 10px;
-    cursor:pointer; text-align:left;
   }
-  #mobileTopbar img{ border-radius:7px; display:block; }
-  #mobileTopbar span{ font-weight:800; font-size:15px; color:var(--primary-deep); }
+  #mobileTopbarHome{
+    background:none; border:none; display:flex; align-items:center; gap:8px;
+    padding:0; margin:0; cursor:pointer; text-align:left;
+  }
+  #mobileTopbarHome img{ border-radius:7px; display:block; }
+  #mobileTopbarHome span{ font-weight:800; font-size:15px; color:var(--primary-deep); }
+  #mobileTopbarProfile{
+    background:var(--chip-bg); border:none; border-radius:999px;
+    width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+    padding:0; margin:0; flex-shrink:0; color:var(--ink-soft);
+  }
+  #mobileTopbarProfile.active{ background:var(--chip-bg); color:var(--primary); }
   #app{
     max-width:480px;
     margin:0 auto;
@@ -131,7 +140,7 @@
   .iconbtn{ background:none; border:none; padding:6px; margin:-6px; display:flex; }
   .scroll{ flex:1; overflow-y:auto; padding:0 20px calc(84px + env(safe-area-inset-bottom,0px)); -webkit-overflow-scrolling:touch; }
   .bottomnav{
-    display:grid; grid-template-columns:repeat(6,1fr); align-items:center; justify-items:center;
+    display:grid; grid-template-columns:repeat(5,1fr); align-items:center; justify-items:center;
     padding:8px 4px calc(env(safe-area-inset-bottom,14px) + 8px);
     border-top:1px solid var(--line); background:var(--card);
     position:fixed; left:0; right:0; bottom:0;
@@ -210,10 +219,13 @@
 </style>
 </head>
 <body>
-<button id="mobileTopbar" onclick="go('home')">
-  <img src="icon-192.png" width="24" height="24" alt="" />
-  <span>AiresCare</span>
-</button>
+<div id="mobileTopbar">
+  <button id="mobileTopbarHome" onclick="go('home')">
+    <img src="icon-192.png" width="24" height="24" alt="" />
+    <span>AiresCare</span>
+  </button>
+  <button id="mobileTopbarProfile" onclick="go('perfil')"></button>
+</div>
 <div id="shell">
   <nav id="sidebar">
     <button class="sidebar-logo" onclick="go('home')" style="border:none; background:none; cursor:pointer; text-align:left; width:100%;">
@@ -549,8 +561,7 @@ function bottomNav(active){
     {key:"equipos", icon:"wind", label:"Equipos"},
     {key:"agenda", icon:"calendarDays", label:"Agenda"},
     {key:"add", icon:"plus", label:""},
-    {key:"historial", icon:"clock", label:"Historial"},
-    {key:"perfil", icon:"user", label:"Perfil"}
+    {key:"historial", icon:"clock", label:"Historial"}
   ];
   return `<div class="bottomnav">${items.map(it=>{
     if(it.key==="add"){
@@ -1795,7 +1806,16 @@ function render(){
   const fn = map[state.screen] || screenHome;
   document.getElementById("app").innerHTML = fn();
   updateSidebarActive();
+  updateMobileTopbarProfile();
   initMapPickerIfNeeded();
+}
+
+function updateMobileTopbarProfile(){
+  const btn = document.getElementById("mobileTopbarProfile");
+  if(!btn) return;
+  const isActive = state.screen === "perfil";
+  btn.classList.toggle("active", isActive);
+  btn.innerHTML = svg("user", 17, isActive ? "#0E63B0" : "#5B7A93");
 }
 
 function updateSidebarActive(){
