@@ -290,10 +290,17 @@ function loadEquipos(){
     equipos = JSON.parse(JSON.stringify(DEFAULT_EQUIPOS));
   }
   // Migracion: asegurar que cada entrada de historial tenga un id unico
+  // y un estado realizado/pendiente (fechas pasadas = ya hecho, hoy/futuro = pendiente)
   let changed = false;
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
   equipos.forEach(eq=>{
     (eq.historial||[]).forEach(h=>{
       if(!h.id){ h.id = Date.now()+Math.random().toString(36).slice(2,7); changed = true; }
+      if(h.realizado===undefined){
+        const [d,m,y] = h.fecha.split("/").map(Number);
+        h.realizado = new Date(y,m-1,d) < hoy;
+        changed = true;
+      }
     });
   });
   if(changed) saveEquipos(equipos);
@@ -339,7 +346,8 @@ let state = {
   agendaYear: null,
   agendaMonth: null,
   agendaDiaSel: null,
-  prefillFecha: null
+  prefillFecha: null,
+  agendaReagendando: null
 };
 
 function fechaISOaDMY(iso){
@@ -890,6 +898,9 @@ function screenAgendar(){
         <label class="field-label">Fecha del mantenimiento</label>
         <input class="field-input" type="date" id="f-fecha" value="${fechaPrefill}" />
 
+        <label class="field-label">Hora (opcional)</label>
+        <input class="field-input" type="time" id="f-hora" />
+
         <label class="field-label">Tipo de mantenimiento</label>
         <select class="field-input" id="f-tipo">
           <option>Mantenimiento Preventivo</option>
@@ -914,18 +925,22 @@ function screenAgendar(){
 }
 
 function recalcularFechasEquipo(eq){
-  if(eq.historial.length){
-    eq.proximo = eq.historial.reduce((max,h)=> parseDMY(h.fecha) > parseDMY(max) ? h.fecha : max, eq.historial[0].fecha);
-    eq.ultimo = eq.historial.reduce((min,h)=> parseDMY(h.fecha) < parseDMY(min) ? h.fecha : min, eq.historial[0].fecha);
-  } else {
-    eq.proximo = null;
-    eq.ultimo = null;
-  }
+  const pendientes = eq.historial.filter(h=>!h.realizado);
+  const realizados = eq.historial.filter(h=>h.realizado);
+
+  eq.proximo = pendientes.length
+    ? pendientes.reduce((min,h)=> parseDMY(h.fecha) < parseDMY(min) ? h.fecha : min, pendientes[0].fecha)
+    : null;
+
+  eq.ultimo = realizados.length
+    ? realizados.reduce((max,h)=> parseDMY(h.fecha) > parseDMY(max) ? h.fecha : max, realizados[0].fecha)
+    : null;
 }
 
 function guardarMantenimiento(){
   const equipoId = Number(document.getElementById("f-equipo").value);
   const fechaISO = document.getElementById("f-fecha").value;
+  const hora = document.getElementById("f-hora").value;
   const tipo = document.getElementById("f-tipo").value;
   const tecnico = document.getElementById("f-tecnico").value;
   const precioRaw = document.getElementById("f-precio").value;
@@ -934,9 +949,12 @@ function guardarMantenimiento(){
   const hoyISO = new Date().toISOString().slice(0,10);
   const fecha = fechaISOaDMY(fechaISO || hoyISO);
 
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const realizado = parseDMY(fecha) < hoy;
+
   const eq = state.equipos.find(e=>e.id===equipoId);
   if(eq){
-    eq.historial.unshift({id: Date.now()+Math.random().toString(36).slice(2,7), fecha, tipo, tecnico: tecnico||"Sin asignar", precio, notas: notas||"Sin notas."});
+    eq.historial.unshift({id: Date.now()+Math.random().toString(36).slice(2,7), fecha, hora: hora||"", tipo, tecnico: tecnico||"Sin asignar", precio, notas: notas||"Sin notas.", realizado});
     recalcularFechasEquipo(eq);
     saveEquipos(state.equipos);
   }
@@ -984,15 +1002,69 @@ function isoHoy(){
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
 
-function mantenimientosPorFecha(){
+function eventosPorFecha(){
   const mapa = {};
   state.equipos.forEach(eq=>{
-    if(!eq.proximo) return;
-    const iso = fechaDMYaISO(eq.proximo);
-    if(!mapa[iso]) mapa[iso] = [];
-    mapa[iso].push(eq);
+    (eq.historial||[]).forEach(h=>{
+      const iso = fechaDMYaISO(h.fecha);
+      if(!mapa[iso]) mapa[iso] = [];
+      mapa[iso].push({
+        equipoId: eq.id,
+        historialId: h.id,
+        nombre: eq.nombre,
+        cliente: eq.cliente,
+        marca: eq.marca,
+        telefono: eq.telefono,
+        fecha: h.fecha,
+        tipo: h.tipo,
+        hora: h.hora || "",
+        precio: h.precio,
+        notas: h.notas,
+        realizado: !!h.realizado
+      });
+    });
   });
+  Object.values(mapa).forEach(arr=>arr.sort((a,b)=>(a.hora||"99:99") < (b.hora||"99:99") ? -1 : 1));
   return mapa;
+}
+
+function marcarRealizadoAgenda(equipoId, historialId){
+  const eq = state.equipos.find(e=>e.id===Number(equipoId));
+  if(!eq) return;
+  const h = eq.historial.find(x=>String(x.id)===String(historialId));
+  if(!h) return;
+  h.realizado = true;
+  recalcularFechasEquipo(eq);
+  saveEquipos(state.equipos);
+  showToast("Marcado como realizado");
+  render();
+}
+
+function abrirReagendarAgenda(equipoId, historialId){
+  state.agendaReagendando = `${equipoId}:${historialId}`;
+  render();
+}
+
+function cancelarReagendarAgenda(){
+  state.agendaReagendando = null;
+  render();
+}
+
+function guardarReagendarAgenda(equipoId, historialId){
+  const eq = state.equipos.find(e=>e.id===Number(equipoId));
+  if(!eq) return;
+  const h = eq.historial.find(x=>String(x.id)===String(historialId));
+  if(!h) return;
+  const nuevaFechaISO = document.getElementById("rg-fecha").value;
+  const nuevaHora = document.getElementById("rg-hora").value;
+  if(!nuevaFechaISO){ showToast("Elige una fecha"); return; }
+  h.fecha = fechaISOaDMY(nuevaFechaISO);
+  h.hora = nuevaHora || "";
+  recalcularFechasEquipo(eq);
+  saveEquipos(state.equipos);
+  state.agendaReagendando = null;
+  showToast("Reagendado");
+  render();
 }
 
 function generarCeldasCalendario(year, month){
@@ -1033,21 +1105,24 @@ function screenAgenda(){
   if(!state.agendaYear){ const d = new Date(); state.agendaYear = d.getFullYear(); state.agendaMonth = d.getMonth(); }
   if(!state.agendaDiaSel) state.agendaDiaSel = hoyIso;
 
-  const mapa = mantenimientosPorFecha();
+  const mapa = eventosPorFecha();
   const celdas = generarCeldasCalendario(state.agendaYear, state.agendaMonth);
 
   const celdasHtml = celdas.map(c=>{
     if(!c) return `<div></div>`;
-    const tieneEventos = !!mapa[c.iso];
+    const eventos = mapa[c.iso] || [];
+    const tienePendientes = eventos.some(e=>!e.realizado);
+    const tieneRealizados = eventos.some(e=>e.realizado);
     const esHoy = c.iso === hoyIso;
     const esSel = c.iso === state.agendaDiaSel;
     let bg = "transparent", color = "var(--ink)";
     if(esSel){ bg = "var(--primary)"; color = "#fff"; }
     else if(esHoy){ bg = "var(--chip-bg)"; color = "var(--primary)"; }
+    const dotColor = esSel ? "#fff" : (tienePendientes ? "var(--warn)" : "var(--mint)");
     return `
       <button onclick="seleccionarDiaAgenda('${c.iso}')" style="background:${bg}; color:${color}; border:none; border-radius:12px; height:42px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:13px; font-weight:${esSel||esHoy?'800':'600'}; position:relative; cursor:pointer;">
         ${c.day}
-        ${tieneEventos ? `<span style="position:absolute; bottom:4px; width:4px; height:4px; border-radius:999px; background:${esSel?'#fff':'var(--mint)'};"></span>` : ""}
+        ${(tienePendientes||tieneRealizados) ? `<span style="position:absolute; bottom:4px; width:4px; height:4px; border-radius:999px; background:${dotColor};"></span>` : ""}
       </button>`;
   }).join("");
 
@@ -1056,18 +1131,43 @@ function screenAgenda(){
   const selDate = new Date(selY, selM-1, selD);
   const nombreDiaSel = `${DIAS_SEMANA_LARGO_ES[selDate.getDay()]} ${selD} de ${MESES_ES[selM-1].toLowerCase()}`;
 
-  const eventosHtml = eventosDia.map(eq=>{
-    const tieneTelefono = !!limpiarTelefono(eq.telefono);
+  const eventosHtml = eventosDia.map(ev=>{
+    const tieneTelefono = !!limpiarTelefono(ev.telefono);
+    const key = `${ev.equipoId}:${ev.historialId}`;
+    const reagendando = state.agendaReagendando === key;
+
+    if(reagendando){
+      return `
+      <div class="card" style="margin-bottom:10px;">
+        <div style="font-weight:700; font-size:13.5px; margin-bottom:8px;">Reagendar: ${ev.nombre}${ev.cliente ? ' · '+ev.cliente : ''}</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <input class="field-input" style="margin-top:0; flex:1; min-width:130px;" type="date" id="rg-fecha" value="${state.agendaDiaSel}" />
+          <input class="field-input" style="margin-top:0; flex:1; min-width:100px;" type="time" id="rg-hora" value="${ev.hora||''}" />
+        </div>
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button class="btn-primary" style="flex:1; padding:9px 0; font-size:12.5px;" onclick="guardarReagendarAgenda(${ev.equipoId},'${ev.historialId}')">GUARDAR</button>
+          <button class="btn-outline" style="flex:1; padding:9px 0; font-size:12.5px;" onclick="cancelarReagendarAgenda()">CANCELAR</button>
+        </div>
+      </div>`;
+    }
+
     return `
     <div class="card" style="margin-bottom:10px;">
-      <div style="cursor:pointer;" onclick="openEquipo(${eq.id})">
-        <div style="font-weight:700; font-size:14px;">${eq.nombre}${eq.cliente ? ` · ${eq.cliente}` : ""}</div>
-        <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${eq.marca}</div>
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; cursor:pointer;" onclick="openEquipo(${ev.equipoId})">
+        <div>
+          <div style="font-weight:700; font-size:14px;">${ev.nombre}${ev.cliente ? ` · ${ev.cliente}` : ""}</div>
+          <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${ev.marca}${ev.hora ? ` · ${ev.hora}` : ""}</div>
+        </div>
+        <span style="background:${ev.realizado?'#E4F6EF':'#FBF0E2'}; color:${ev.realizado?'var(--mint)':'var(--warn)'}; font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:999px; white-space:nowrap;">${ev.realizado ? '✓ Realizado' : 'Pendiente'}</span>
       </div>
-      ${tieneTelefono ? `
-      <div style="display:flex; gap:8px; margin-top:10px;">
-        <a href="tel:${limpiarTelefono(eq.telefono)}" style="flex:1; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:var(--chip-bg); color:var(--primary); border-radius:10px; padding:8px; font-size:12px; font-weight:700;">${svg('phone',13,'var(--primary)')} Llamar</a>
-        <a href="${linkWhatsApp(eq.telefono, mensajeRecordatorio(eq))}" target="_blank" rel="noopener" style="flex:1; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:#E4F6EF; color:var(--mint); border-radius:10px; padding:8px; font-size:12px; font-weight:700;">${svg('whatsapp',13,'var(--mint)')} Recordar</a>
+      <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+        ${!ev.realizado ? `<button onclick="marcarRealizadoAgenda(${ev.equipoId},'${ev.historialId}')" style="flex:1; min-width:120px; background:#E4F6EF; color:var(--mint); border:none; border-radius:10px; padding:8px; font-size:12px; font-weight:700; cursor:pointer;">${svg('check',13,'var(--mint)')} Marcar hecho</button>` : ""}
+        ${!ev.realizado ? `<button onclick="abrirReagendarAgenda(${ev.equipoId},'${ev.historialId}')" style="flex:1; min-width:120px; background:var(--chip-bg); color:var(--primary); border:none; border-radius:10px; padding:8px; font-size:12px; font-weight:700; cursor:pointer;">${svg('calendar',13,'var(--primary)')} Reagendar</button>` : ""}
+      </div>
+      ${(tieneTelefono && !ev.realizado) ? `
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <a href="tel:${limpiarTelefono(ev.telefono)}" style="flex:1; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:var(--chip-bg); color:var(--primary); border-radius:10px; padding:8px; font-size:12px; font-weight:700;">${svg('phone',13,'var(--primary)')} Llamar</a>
+        <a href="${linkWhatsApp(ev.telefono, mensajeRecordatorio({nombre:ev.nombre, marca:ev.marca, cliente:ev.cliente, proximo:ev.fecha}))}" target="_blank" rel="noopener" style="flex:1; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:#E4F6EF; color:var(--mint); border-radius:10px; padding:8px; font-size:12px; font-weight:700;">${svg('whatsapp',13,'var(--mint)')} Recordar</a>
       </div>` : ""}
     </div>`;
   }).join("");
@@ -1087,6 +1187,10 @@ function screenAgenda(){
           </div>
           <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px; padding:0 2px;">
             ${celdasHtml}
+          </div>
+          <div style="display:flex; gap:14px; padding:10px 6px 0; font-size:10.5px; color:var(--ink-soft);">
+            <span><span style="display:inline-block; width:6px; height:6px; border-radius:999px; background:var(--warn); margin-right:4px;"></span>Pendiente</span>
+            <span><span style="display:inline-block; width:6px; height:6px; border-radius:999px; background:var(--mint); margin-right:4px;"></span>Realizado</span>
           </div>
         </div>
 
@@ -1108,17 +1212,17 @@ function screenHistorial(){
 
   const rows = filtered.map(h=>`
     <div class="card" style="display:flex; gap:10px; margin-bottom:10px; cursor:pointer;" onclick="verEquipoDesdeHistorial(${h.equipoId})">
-      ${svg('check',20,'#28A88B')}
+      ${h.realizado ? svg('check',20,'#28A88B') : svg('calendarDays',20,'var(--warn)')}
       <div style="flex:1;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-weight:700; font-size:13.5px;">${h.fecha}</span>
+          <span style="font-weight:700; font-size:13.5px;">${h.fecha}${h.hora ? ` · ${h.hora}` : ""}</span>
           <div style="display:flex; align-items:center; gap:10px;">
             <button class="iconbtn" style="padding:2px; margin:-2px;" onclick="event.stopPropagation(); editarHistorialItem('${h.equipoId}','${h.id}')">${svg('edit',16,'var(--primary)')}</button>
             <button class="iconbtn" style="padding:2px; margin:-2px;" onclick="event.stopPropagation(); eliminarHistorialItem('${h.equipoId}','${h.id}')">${svg('trash',16,'#D64545')}</button>
             ${svg('chevronRight',16,'#5B7A93')}
           </div>
         </div>
-        <div style="font-size:12px; color:var(--primary); font-weight:700; margin-top:2px;">${h.equipo} · ${h.tipo}${(h.precio!==undefined && h.precio!==null) ? ` · $${Number(h.precio).toFixed(2)}` : ""}</div>
+        <div style="font-size:12px; color:var(--primary); font-weight:700; margin-top:2px;">${h.equipo} · ${h.tipo}${(h.precio!==undefined && h.precio!==null) ? ` · $${Number(h.precio).toFixed(2)}` : ""} ${h.realizado ? '' : '· <span style="color:var(--warn);">Pendiente</span>'}</div>
         <div style="font-size:12px; color:var(--ink-soft); margin-top:4px;">Técnico: ${h.tecnico}</div>
         <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">Notas: ${h.notas}</div>
       </div>
@@ -1194,6 +1298,9 @@ function screenEditarHistorial(){
         <label class="field-label">Fecha del mantenimiento</label>
         <input class="field-input" type="date" id="eh-fecha" value="${fechaDMYaISO(h.fecha)}" />
 
+        <label class="field-label">Hora (opcional)</label>
+        <input class="field-input" type="time" id="eh-hora" value="${h.hora||""}" />
+
         <label class="field-label">Tipo de mantenimiento</label>
         <select class="field-input" id="eh-tipo">
           ${["Mantenimiento Preventivo","Mantenimiento Correctivo","Instalación","Revisión de gas"].map(t=>`<option ${h.tipo===t?'selected':''}>${t}</option>`).join("")}
@@ -1208,6 +1315,11 @@ function screenEditarHistorial(){
         <label class="field-label">Notas (opcional)</label>
         <textarea class="field-input" id="eh-notas" style="min-height:70px; resize:none;">${h.notas&&h.notas!=='Sin notas.'?h.notas:''}</textarea>
 
+        <label style="display:flex; align-items:center; gap:8px; margin-top:16px; font-size:13.5px; color:var(--ink);">
+          <input type="checkbox" id="eh-realizado" ${h.realizado?'checked':''} style="width:16px; height:16px;" />
+          Ya se realizó (marcar como completado)
+        </label>
+
         <button class="btn-primary" style="margin-top:20px; margin-bottom:20px;" onclick="guardarEdicionHistorial()">GUARDAR CAMBIOS</button>
       </div>
       ${bottomNav("historial")}
@@ -1221,16 +1333,20 @@ function guardarEdicionHistorial(){
   if(!h) return;
 
   const fechaISO = document.getElementById("eh-fecha").value;
+  const hora = document.getElementById("eh-hora").value;
   const tipo = document.getElementById("eh-tipo").value;
   const tecnico = document.getElementById("eh-tecnico").value.trim();
   const precioRaw = document.getElementById("eh-precio").value;
   const notas = document.getElementById("eh-notas").value.trim();
+  const realizado = document.getElementById("eh-realizado").checked;
 
   if(fechaISO) h.fecha = fechaISOaDMY(fechaISO);
+  h.hora = hora || "";
   h.tipo = tipo;
   h.tecnico = tecnico || "Sin asignar";
   h.precio = precioRaw ? Number(precioRaw) : null;
   h.notas = notas || "Sin notas.";
+  h.realizado = realizado;
 
   recalcularFechasEquipo(eq);
   saveEquipos(state.equipos);
