@@ -883,6 +883,7 @@ function screenDetalle(){
   const rows = [
     ["Marca / Modelo", eq.marca ? eq.marca.split(" ").slice(0,2).join(" ") : "Sin registrar"],
     ["Capacidad", eq.capacidad || "Sin registrar"],
+    ["Tipo de compresor", esInverter(eq) ? "Inverter" : "Convencional"],
     ["Fecha de instalación", eq.instalado || "Sin registrar"],
     ["Último mantenimiento", eq.ultimo || "Aún sin mantenimiento"],
     ["Próximo mantenimiento", eq.proximo || "Sin programar", true]
