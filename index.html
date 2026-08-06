@@ -923,17 +923,21 @@ function screenDetalle(){
   const consumo = estimarConsumo(eq);
   const consumoCard = consumo ? `
     <div style="margin-top:20px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Consumo eléctrico estimado</div>
-    <div class="card" style="margin-top:8px; display:flex; gap:10px;">
-      <div style="flex:1; text-align:center; padding:6px 4px; border-right:1px solid var(--line);">
+    <div class="card" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:10px;">
+      <div style="flex:1; min-width:70px; text-align:center; padding:6px 4px; border-right:1px solid var(--line);">
+        <div style="font-size:19px; font-weight:800; color:var(--primary);">${(consumo.watts/1000).toFixed(2)}</div>
+        <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">kW</div>
+      </div>
+      <div style="flex:1; min-width:70px; text-align:center; padding:6px 4px; border-right:1px solid var(--line);">
         <div style="font-size:19px; font-weight:800; color:var(--primary);">${consumo.kwhDia.toFixed(1)}</div>
         <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">kWh / día</div>
       </div>
-      <div style="flex:1; text-align:center; padding:6px 4px; ${consumo.costoMes!=null ? 'border-right:1px solid var(--line);' : ''}">
+      <div style="flex:1; min-width:70px; text-align:center; padding:6px 4px; ${consumo.costoMes!=null ? 'border-right:1px solid var(--line);' : ''}">
         <div style="font-size:19px; font-weight:800; color:var(--primary);">${consumo.kwhMes.toFixed(0)}</div>
         <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">kWh / mes</div>
       </div>
       ${consumo.costoMes!=null ? `
-      <div style="flex:1; text-align:center; padding:6px 4px;">
+      <div style="flex:1; min-width:70px; text-align:center; padding:6px 4px;">
         <div style="font-size:19px; font-weight:800; color:var(--mint);">$${consumo.costoMes.toFixed(2)}</div>
         <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">$ / mes</div>
       </div>` : ""}
