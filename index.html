@@ -357,7 +357,9 @@ const ICON = {
   cash: `<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 9v.01M18 15v.01"/>`,
   camera: `<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/>`,
   calendarDays: `<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/>`,
-  search: `<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>`
+  search: `<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>`,
+  lock: `<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>`,
+  refresh: `<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>`
 };
 function svg(name, size=20, color="currentColor", strokeW=2){
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="${strokeW}" stroke-linecap="round" stroke-linejoin="round">${ICON[name]||""}</svg>`;
@@ -446,6 +448,86 @@ const firebaseConfig = {
   appId: "1:441921693356:web:b1f8584ea98b729b3ce109"
 };
 
+/* ---------- Administración: quién puede ver el panel de usuarios ---------- */
+const ADMIN_EMAILS = ["fernandotapia7@gmail.com"];
+const ADMIN_UIDS = ["Vf0N4vay8VZIeLqKGARrfwclzy42"];
+function esAdmin(){
+  if(!state.usuario) return false;
+  const correo = (state.usuario.correo || "").toLowerCase();
+  return ADMIN_UIDS.includes(state.usuario.uid) || ADMIN_EMAILS.map(e=>e.toLowerCase()).includes(correo);
+}
+
+let unsubscribeBloqueo = null;
+let bloqueoMostrado = false;
+
+function escucharBloqueoPropio(){
+  if(!db || !state.usuario) return;
+  if(unsubscribeBloqueo) unsubscribeBloqueo();
+  unsubscribeBloqueo = docUsuario().onSnapshot(
+    (doc)=>{
+      if(doc.exists && doc.data().bloqueado === true) manejarBloqueo();
+    },
+    ()=>{ /* si falla el listener (p.ej. sin permisos) lo ignoramos en silencio */ }
+  );
+}
+
+function manejarBloqueo(){
+  if(unsubscribeBloqueo){ unsubscribeBloqueo(); unsubscribeBloqueo = null; }
+  bloqueoMostrado = true;
+  state.usuario = null;
+  go("bloqueado", true);
+  if(auth) auth.signOut();
+}
+
+/* ---------- Panel de administración: listar y bloquear usuarios ---------- */
+async function cargarUsuariosAdmin(){
+  if(!db || !esAdmin()) return;
+  state.adminUsuariosCargando = true;
+  render();
+  try{
+    const snap = await db.collection("usuarios").get();
+    state.adminUsuarios = snap.docs
+      .map(d=>({ uid: d.id, ...d.data() }))
+      .sort((a,b)=>{
+        const ta = a.actualizado && a.actualizado.toMillis ? a.actualizado.toMillis() : 0;
+        const tb = b.actualizado && b.actualizado.toMillis ? b.actualizado.toMillis() : 0;
+        return tb - ta;
+      });
+  }catch(e){
+    console.error("Error cargando usuarios:", e);
+    showToast("No se pudo cargar la lista. Revisa las reglas de Firestore.");
+    state.adminUsuarios = state.adminUsuarios || [];
+  }
+  state.adminUsuariosCargando = false;
+  render();
+}
+
+function abrirPanelAdmin(){
+  go("adminPanel");
+  cargarUsuariosAdmin();
+}
+
+function confirmarBloqueo(uid, nombre){
+  showConfirm(`¿Bloquear a ${nombre || "este usuario"}? No va a poder volver a entrar hasta que lo desbloquees.`, ()=>{
+    alternarBloqueoUsuario(uid, true);
+  }, "Bloquear");
+}
+
+async function alternarBloqueoUsuario(uid, bloquear){
+  if(!db) return;
+  if(state.usuario && uid === state.usuario.uid){ showToast("No podés bloquearte a vos mismo"); return; }
+  try{
+    await db.collection("usuarios").doc(uid).set({ bloqueado: bloquear }, { merge: true });
+    showToast(bloquear ? "Usuario bloqueado" : "Usuario desbloqueado");
+    const u = (state.adminUsuarios||[]).find(x=>x.uid===uid);
+    if(u) u.bloqueado = bloquear;
+    render();
+  }catch(e){
+    console.error("Error actualizando bloqueo:", e);
+    showToast("No se pudo actualizar. Revisa las reglas de Firestore.");
+  }
+}
+
 let db = null;
 let auth = null;
 try{
@@ -478,8 +560,11 @@ async function subirANube(){
     await docUsuario().set({
       equipos: JSON.stringify(state.equipos),
       perfil: JSON.stringify(state.perfil),
+      nombre: state.usuario.nombre || "",
+      correo: state.usuario.correo || "",
+      foto: state.usuario.foto || "",
       actualizado: firebase.firestore.FieldValue.serverTimestamp()
-    });
+    }, { merge: true });
     estadoSync = "ok";
     ultimaSyncFecha = new Date();
   }catch(e){
@@ -498,6 +583,10 @@ async function sincronizarDesdeNube(){
     const doc = await docUsuario().get();
     if(doc.exists){
       const data = doc.data();
+      if(data.bloqueado === true){
+        manejarBloqueo();
+        return false;
+      }
       if(data.equipos){ state.equipos = JSON.parse(data.equipos); saveEquipos(state.equipos, false); }
       if(data.perfil){ state.perfil = JSON.parse(data.perfil); savePerfil(state.perfil, false); }
       estadoSync = "ok";
@@ -514,6 +603,7 @@ async function sincronizarDesdeNube(){
     estadoSync = "error";
     if(state.screen === "perfil") render();
   }
+  escucharBloqueoPropio();
   return necesitaOnboarding;
 }
 
@@ -528,6 +618,7 @@ function iniciarSesionGoogle(){
 
 function cerrarSesion(){
   showConfirm("¿Cerrar sesión? Tus datos siguen guardados en la nube con tu cuenta de Google, puedes volver a entrar cuando quieras.", () => {
+    if(unsubscribeBloqueo){ unsubscribeBloqueo(); unsubscribeBloqueo = null; }
     auth.signOut();
   }, "Cerrar sesión", "primary");
 }
@@ -538,11 +629,13 @@ if(auth){
     if(user){
       state.usuario = { uid: user.uid, nombre: user.displayName || "", correo: user.email || "", foto: user.photoURL || "" };
       const necesitaOnboarding = await sincronizarDesdeNube();
+      if(!state.usuario) return; // se detectó bloqueo durante la sincronización
       if(necesitaOnboarding) go("bienvenida", true);
       else if(state.screen === "login" || state.screen === "cargando") go("home", true);
       else render();
     } else {
       state.usuario = null;
+      if(bloqueoMostrado){ bloqueoMostrado = false; return; }
       go("login", true);
     }
   });
@@ -586,7 +679,9 @@ let state = {
   comprobanteEquipoId: null,
   comprobanteHistorialId: null,
   usuario: null,
-  onboardingOmitido: false
+  onboardingOmitido: false,
+  adminUsuarios: [],
+  adminUsuariosCargando: false
 };
 
 function fechaISOaDMY(iso){
@@ -874,6 +969,73 @@ function screenCargando(){
         <img src="icon-192.png" width="56" height="56" style="border-radius:16px;" alt="" />
         <div style="font-size:13px; color:var(--ink-soft);">Cargando...</div>
       </div>
+    </div>`;
+}
+
+function screenBloqueado(){
+  return `
+    <div class="screen" style="align-items:center; justify-content:center; display:flex; padding:20px;">
+      <div style="display:flex; flex-direction:column; align-items:center; text-align:center; max-width:320px;">
+        <div style="width:64px; height:64px; border-radius:999px; background:#FBE7E7; display:flex; align-items:center; justify-content:center;">
+          ${svg('lock',28,'#D64545')}
+        </div>
+        <div style="font-weight:800; font-size:19px; margin-top:18px; color:var(--ink);">Cuenta bloqueada</div>
+        <div style="font-size:13.5px; color:var(--ink-soft); margin-top:8px; line-height:1.5;">
+          Tu acceso a AiresCare fue restringido por un administrador. Si creés que es un error, contactá a quien administra la cuenta.
+        </div>
+        <button class="btn-primary" style="margin-top:24px; width:auto; padding:12px 28px;" onclick="go('login')">Entendido</button>
+      </div>
+    </div>`;
+}
+
+function screenAdminPanel(){
+  if(!esAdmin()){
+    return `
+      <div class="screen">
+        ${topBar("Panel de administración","perfil")}
+        <div class="scroll">
+          <div class="card" style="margin-top:16px; text-align:center; color:var(--ink-soft); font-size:13px;">No tenés acceso a esta sección.</div>
+        </div>
+        ${bottomNav("perfil")}
+      </div>`;
+  }
+  const usuarios = state.adminUsuarios || [];
+  const cargando = state.adminUsuariosCargando;
+  return `
+    <div class="screen">
+      ${topBar("Usuarios","perfil", `<button class="iconbtn" onclick="cargarUsuariosAdmin()" ${cargando?'disabled':''}>${svg('refresh',19,'var(--ink)')}</button>`)}
+      <div class="scroll">
+        <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:14px;">
+          ${cargando ? "Cargando..." : `${usuarios.length} usuario${usuarios.length===1?'':'s'} registrado${usuarios.length===1?'':'s'} en total.`}
+        </div>
+        ${cargando ? `<div style="text-align:center; padding:30px; color:var(--ink-soft); font-size:13px;">Cargando usuarios...</div>` : ""}
+        ${(!cargando && usuarios.length===0) ? `<div class="card" style="text-align:center; color:var(--ink-soft); font-size:13px; padding:24px;">No hay usuarios registrados todavía.</div>` : ""}
+        ${usuarios.map(u=>{
+          const esYo = state.usuario && u.uid === state.usuario.uid;
+          const bloqueado = u.bloqueado === true;
+          let ultima = "Sin datos";
+          if(u.actualizado && typeof u.actualizado.toDate === "function"){
+            const d = u.actualizado.toDate();
+            ultima = d.toLocaleDateString() + " " + d.toLocaleTimeString().slice(0,5);
+          }
+          const nombreEscape = (u.nombre || u.correo || "").replace(/'/g,"");
+          return `
+          <div class="card" style="margin-top:10px; display:flex; gap:12px; align-items:center;">
+            ${u.foto ? `<img src="${u.foto}" width="42" height="42" style="border-radius:999px; object-fit:cover; flex-shrink:0;" alt="" />` : `<div style="width:42px;height:42px;border-radius:999px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center; flex-shrink:0;">${svg('user',20,'var(--primary)')}</div>`}
+            <div style="flex:1; min-width:0;">
+              <div style="font-weight:700; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${u.nombre || "Sin nombre"}${esYo ? " (vos)" : ""}</div>
+              <div style="font-size:11.5px; color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${u.correo || u.uid}</div>
+              <div style="font-size:10.5px; color:var(--ink-soft); margin-top:2px;">Última conexión: ${ultima}</div>
+              ${bloqueado ? `<span class="chip chip-warn" style="margin-top:4px;">Bloqueado</span>` : ""}
+            </div>
+            ${!esYo ? `
+            <button class="btn-outline" style="width:auto; flex-shrink:0; padding:8px 12px; font-size:11.5px; ${bloqueado ? '' : 'border-color:#D64545; color:#D64545;'}" onclick="${bloqueado ? `alternarBloqueoUsuario('${u.uid}', false)` : `confirmarBloqueo('${u.uid}','${nombreEscape}')`}">
+              ${bloqueado ? "Desbloquear" : "Bloquear"}
+            </button>` : ""}
+          </div>`;
+        }).join("")}
+      </div>
+      ${bottomNav("perfil")}
     </div>`;
 }
 
@@ -2233,6 +2395,7 @@ function screenPerfil(){
             ${estadoSync==="idle" ? `<span style="color:var(--ink-soft);">Sin sincronizar todavía</span>` : ""}
           </div>
           <button class="btn-outline" style="margin-top:12px;" onclick="sincronizarDesdeNube()">SINCRONIZAR AHORA</button>
+          ${esAdmin() ? `<button class="btn-outline" style="margin-top:10px; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="abrirPanelAdmin()">${svg('lock',15,'var(--primary)')} PANEL DE ADMINISTRACIÓN</button>` : ""}
           <button style="width:100%; background:none; border:none; margin-top:10px; padding:6px; text-align:center; font-size:12.5px; color:#D64545; font-weight:700; cursor:pointer;" onclick="cerrarSesion()">Cerrar sesión</button>
         </div>
 
@@ -2343,6 +2506,7 @@ function render(){
   const map = {
     cargando: screenCargando,
     login: screenLogin,
+    bloqueado: screenBloqueado,
     bienvenida: screenBienvenida,
     home: screenHome,
     equipos: screenEquipos,
@@ -2356,7 +2520,8 @@ function render(){
     comprobante: screenComprobante,
     agenda: screenAgenda,
     consejos: screenConsejos,
-    perfil: screenPerfil
+    perfil: screenPerfil,
+    adminPanel: screenAdminPanel
   };
   const fn = map[state.screen] || screenHome;
   document.getElementById("app").innerHTML = fn();
@@ -2385,13 +2550,13 @@ function updateSidebarActive(){
     agenda:"agenda",
     historial:"historial", editarHistorial:"historial", comprobante:"historial",
     consejos:"consejos",
-    perfil:"perfil"
+    perfil:"perfil", adminPanel:"perfil"
   }[state.screen] || "home";
   document.querySelectorAll(".sidebar-link").forEach(btn=>{
     btn.classList.toggle("active", btn.getAttribute("data-screen")===group);
   });
 
-  const esPantallaAuth = state.screen === "cargando" || state.screen === "login" || state.screen === "bienvenida";
+  const esPantallaAuth = state.screen === "cargando" || state.screen === "login" || state.screen === "bienvenida" || state.screen === "bloqueado";
   const mobileTop = document.getElementById("mobileTopbar");
   const sidebarEl = document.getElementById("sidebar");
   if(mobileTop) mobileTop.style.display = esPantallaAuth ? "none" : "";
