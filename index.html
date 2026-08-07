@@ -17,6 +17,9 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="AiresCare" />
@@ -378,8 +381,9 @@ function loadEquipos(){
   if(changed) saveEquipos(equipos);
   return equipos;
 }
-function saveEquipos(equipos){
+function saveEquipos(equipos, subirNube){
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(equipos)); }catch(e){}
+  if(subirNube !== false) programarSubidaNube();
 }
 
 const PERFIL_KEY = "airescare_perfil_v1";
@@ -390,8 +394,9 @@ function loadPerfil(){
   }catch(e){}
   return { nombre: "", correo: "", telefono: "" };
 }
-function savePerfil(perfil){
+function savePerfil(perfil, subirNube){
   try{ localStorage.setItem(PERFIL_KEY, JSON.stringify(perfil)); }catch(e){}
+  if(subirNube !== false) programarSubidaNube();
 }
 
 const NOTIF_LOG_KEY = "airescare_notif_log_v1";
@@ -404,6 +409,113 @@ function loadNotifLog(){
 }
 function saveNotifLog(log){
   try{ localStorage.setItem(NOTIF_LOG_KEY, JSON.stringify(log)); }catch(e){}
+}
+
+/* ---------- Autenticación con Google y sincronización por usuario ---------- */
+const firebaseConfig = {
+  apiKey: "AIzaSyClrv-TpgdZCdFVGYvBGSjEeBEXoxCM5_U",
+  authDomain: "airescare-20bf4.firebaseapp.com",
+  projectId: "airescare-20bf4",
+  storageBucket: "airescare-20bf4.firebasestorage.app",
+  messagingSenderId: "441921693356",
+  appId: "1:441921693356:web:b1f8584ea98b729b3ce109"
+};
+
+let db = null;
+let auth = null;
+try{
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.firestore();
+  auth = firebase.auth();
+}catch(e){
+  console.error("No se pudo inicializar Firebase:", e);
+}
+
+let subidaNubeTimeout = null;
+let estadoSync = "idle"; // idle | syncing | ok | error
+let ultimaSyncFecha = null;
+let authListo = false; // true cuando Firebase ya nos dijo si hay sesión o no
+
+function docUsuario(){
+  return db.collection("usuarios").doc(state.usuario.uid);
+}
+
+function programarSubidaNube(){
+  if(!state.usuario) return; // sin sesión no hay dónde guardar en la nube
+  clearTimeout(subidaNubeTimeout);
+  subidaNubeTimeout = setTimeout(subirANube, 1200);
+}
+
+async function subirANube(){
+  if(!db || !state.usuario) return;
+  estadoSync = "syncing";
+  try{
+    await docUsuario().set({
+      equipos: JSON.stringify(state.equipos),
+      perfil: JSON.stringify(state.perfil),
+      actualizado: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    estadoSync = "ok";
+    ultimaSyncFecha = new Date();
+  }catch(e){
+    console.error("Error subiendo a la nube:", e);
+    estadoSync = "error";
+  }
+  if(state.screen === "perfil") render();
+}
+
+async function sincronizarDesdeNube(){
+  if(!db || !state.usuario) return;
+  estadoSync = "syncing";
+  if(state.screen === "perfil") render();
+  try{
+    const doc = await docUsuario().get();
+    if(doc.exists){
+      const data = doc.data();
+      if(data.equipos){ state.equipos = JSON.parse(data.equipos); saveEquipos(state.equipos, false); }
+      if(data.perfil){ state.perfil = JSON.parse(data.perfil); savePerfil(state.perfil, false); }
+      estadoSync = "ok";
+      ultimaSyncFecha = new Date();
+      render();
+    } else {
+      // Primera vez de este usuario: sube lo que ya tenga localmente en este dispositivo
+      await subirANube();
+    }
+  }catch(e){
+    console.error("Error sincronizando desde la nube:", e);
+    estadoSync = "error";
+    if(state.screen === "perfil") render();
+  }
+}
+
+function iniciarSesionGoogle(){
+  if(!auth){ showToast("No se pudo conectar con Google"); return; }
+  const provider = new firebase.auth.GoogleAuthProvider();
+  auth.signInWithPopup(provider).catch(err=>{
+    console.error(err);
+    showToast("No se pudo iniciar sesión");
+  });
+}
+
+function cerrarSesion(){
+  showConfirm("¿Cerrar sesión? Tus datos siguen guardados en la nube con tu cuenta de Google, puedes volver a entrar cuando quieras.", () => {
+    auth.signOut();
+  });
+}
+
+if(auth){
+  auth.onAuthStateChanged((user)=>{
+    authListo = true;
+    if(user){
+      state.usuario = { uid: user.uid, nombre: user.displayName || "", correo: user.email || "", foto: user.photoURL || "" };
+      sincronizarDesdeNube();
+      if(state.screen === "login") go("home", true);
+      else render();
+    } else {
+      state.usuario = null;
+      go("login", true);
+    }
+  });
 }
 
 const THEME_KEY = "airescare_theme_v1";
@@ -425,7 +537,7 @@ function alternarTema(){
 }
 
 let state = {
-  screen: "home",
+  screen: "cargando",
   equipos: loadEquipos(),
   perfil: loadPerfil(),
   tema: loadTheme(),
@@ -442,7 +554,8 @@ let state = {
   vistaEquipos: "equipo",
   equiposBusqueda: "",
   comprobanteEquipoId: null,
-  comprobanteHistorialId: null
+  comprobanteHistorialId: null,
+  usuario: null
 };
 
 function fechaISOaDMY(iso){
@@ -689,6 +802,36 @@ function bottomNav(active){
 }
 
 /* ---------- Pantallas ---------- */
+function screenCargando(){
+  return `
+    <div class="screen" style="align-items:center; justify-content:center; display:flex;">
+      <div style="display:flex; flex-direction:column; align-items:center; gap:14px;">
+        <img src="icon-192.png" width="56" height="56" style="border-radius:16px;" alt="" />
+        <div style="font-size:13px; color:var(--ink-soft);">Cargando...</div>
+      </div>
+    </div>`;
+}
+
+function screenLogin(){
+  return `
+    <div class="screen" style="align-items:center; justify-content:center; display:flex; padding:20px;">
+      <div style="display:flex; flex-direction:column; align-items:center; text-align:center; max-width:320px;">
+        <img src="icon-192.png" width="72" height="72" style="border-radius:20px;" alt="" />
+        <div style="font-weight:800; font-size:22px; margin-top:18px; color:var(--primary-deep);">AiresCare</div>
+        <div style="font-size:13.5px; color:var(--ink-soft); margin-top:8px; line-height:1.5;">
+          Inicia sesión con tu cuenta de Google para guardar y sincronizar tus clientes y equipos en la nube.
+        </div>
+        <button onclick="iniciarSesionGoogle()" style="margin-top:26px; display:flex; align-items:center; justify-content:center; gap:10px; background:#fff; border:1px solid var(--line); border-radius:12px; padding:13px 22px; font-size:14px; font-weight:700; color:var(--ink); cursor:pointer; box-shadow:0 2px 6px rgba(11,42,69,0.08);">
+          <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.4 0 6.4 1.2 8.8 3.5l6.6-6.6C35.3 2.5 30 0 24 0 14.6 0 6.5 5.4 2.5 13.2l7.7 6C12.1 13.1 17.6 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.9 7.2l7.5 5.8c4.4-4 6.9-10 6.9-17.5z"/><path fill="#FBBC05" d="M10.2 19.2A14.5 14.5 0 0 0 9.5 24c0 1.7.3 3.3.8 4.8l-7.7 6A24 24 0 0 1 0 24c0-3.9.9-7.5 2.6-10.8l7.6 6z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.8 2.3-8.4 2.3-6.4 0-11.9-3.6-13.8-8.9l-7.7 6C6.5 42.6 14.6 48 24 48z"/></svg>
+          Continuar con Google
+        </button>
+        <div style="font-size:11px; color:var(--ink-soft); margin-top:22px; line-height:1.5;">
+          Tus datos quedan asociados a tu cuenta de Google y solo tú puedes verlos.
+        </div>
+      </div>
+    </div>`;
+}
+
 function screenHome(){
   const eqs = state.equipos;
 
@@ -1932,6 +2075,25 @@ function screenPerfil(){
           </div>
         </div>
 
+        <div style="margin-top:22px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Cuenta</div>
+        <div class="card" style="margin-top:8px;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            ${state.usuario.foto ? `<img src="${state.usuario.foto}" width="44" height="44" style="border-radius:999px;" alt="" />` : `<div style="width:44px;height:44px;border-radius:999px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center;">${svg('user',22,'#0E63B0')}</div>`}
+            <div>
+              <div style="font-weight:700; font-size:14px;">${state.usuario.nombre || "Tu cuenta"}</div>
+              <div style="font-size:12px; color:var(--ink-soft);">${state.usuario.correo}</div>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px; margin-top:14px; font-size:12px;">
+            ${estadoSync==="syncing" ? `<span style="color:var(--warn);">⏳ Sincronizando...</span>` : ""}
+            ${estadoSync==="ok" ? `<span style="color:var(--mint);">✓ Sincronizado${ultimaSyncFecha ? ' · '+ultimaSyncFecha.toLocaleTimeString().slice(0,5) : ''}</span>` : ""}
+            ${estadoSync==="error" ? `<span style="color:#D64545;">Sin conexión con la nube</span>` : ""}
+            ${estadoSync==="idle" ? `<span style="color:var(--ink-soft);">Sin sincronizar todavía</span>` : ""}
+          </div>
+          <button class="btn-outline" style="margin-top:12px;" onclick="sincronizarDesdeNube()">SINCRONIZAR AHORA</button>
+          <button style="width:100%; background:none; border:none; margin-top:10px; padding:6px; text-align:center; font-size:12.5px; color:#D64545; font-weight:700; cursor:pointer;" onclick="cerrarSesion()">Cerrar sesión</button>
+        </div>
+
         <div style="margin-top:22px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Datos personales</div>
         <div class="card" style="margin-top:8px;">
           <label class="field-label" style="margin-top:0;">Nombre</label>
@@ -2005,6 +2167,8 @@ function guardarPerfil(){
 /* ---------- Render principal ---------- */
 function render(){
   const map = {
+    cargando: screenCargando,
+    login: screenLogin,
     home: screenHome,
     equipos: screenEquipos,
     detalle: screenDetalle,
@@ -2046,6 +2210,12 @@ function updateSidebarActive(){
   document.querySelectorAll(".sidebar-link").forEach(btn=>{
     btn.classList.toggle("active", btn.getAttribute("data-screen")===group);
   });
+
+  const esPantallaAuth = state.screen === "cargando" || state.screen === "login";
+  const mobileTop = document.getElementById("mobileTopbar");
+  const sidebarEl = document.getElementById("sidebar");
+  if(mobileTop) mobileTop.style.display = esPantallaAuth ? "none" : "";
+  if(sidebarEl) sidebarEl.style.display = esPantallaAuth ? "none" : "";
 }
 render();
 history.replaceState({screen: state.screen}, "", "");
@@ -2157,6 +2327,9 @@ document.addEventListener("visibilitychange", ()=>{
   if(document.visibilityState === "visible") revisarMantenimientosProximos(false);
 });
 setInterval(()=>revisarMantenimientosProximos(false), 30*60*1000);
+
+// Sincronizar con la nube al abrir la app
+sincronizarDesdeNube();
 
 </script>
 </body>
