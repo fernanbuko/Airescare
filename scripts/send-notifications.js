@@ -96,37 +96,46 @@ async function main() {
     // Armar la lista de avisos que le tocan a este usuario en esta corrida
     const avisos = [];
     equipos.forEach((eq) => {
-      if (!eq.proximo) return;
-      const iso = fechaDMYaISO(eq.proximo);
+      // Revisamos cada registro PENDIENTE del historial (ahí es donde vive
+      // la fecha y la hora real de cada mantenimiento programado), no solo
+      // el resumen "proximo" del equipo.
+      (eq.historial || []).forEach((h) => {
+        if (h.realizado || !h.fecha) return;
+        const iso = fechaDMYaISO(h.fecha);
 
-      if (iso === mananaISO) {
-        avisos.push({
-          eq,
-          clave: `${eq.id}_${iso}_manana`,
-          titulo: `Mañana: mantenimiento de ${eq.nombre}`,
-        });
-      }
+        if (iso === mananaISO) {
+          avisos.push({
+            eq,
+            clave: `${h.id}_${iso}_manana`,
+            titulo: `Mañana: mantenimiento de ${eq.nombre}`,
+            hora: h.hora,
+          });
+        }
 
-      if (iso === hoyISO) {
-        avisos.push({
-          eq,
-          clave: `${eq.id}_${iso}_hoy`,
-          titulo: `Hoy: mantenimiento de ${eq.nombre}`,
-        });
+        if (iso === hoyISO) {
+          avisos.push({
+            eq,
+            clave: `${h.id}_${iso}_hoy`,
+            titulo: `Hoy: mantenimiento de ${eq.nombre}`,
+            hora: h.hora,
+          });
 
-        // Recordatorio 30 minutos antes, solo si tiene hora puesta
-        if (eq.hora) {
-          const minutosCita = minutosDeHora(eq.hora);
-          const diferencia = minutosCita - minutosAhora;
-          if (diferencia >= 0 && diferencia <= 30) {
-            avisos.push({
-              eq,
-              clave: `${eq.id}_${iso}_${eq.hora}_30min`,
-              titulo: `Tienes un mantenimiento en 30 minutos: ${eq.nombre}`,
-            });
+          // Recordatorio 30 minutos antes, solo si ese registro tiene hora puesta.
+          // La hora forma parte de la clave: si la cambias, se manda de nuevo.
+          if (h.hora) {
+            const minutosCita = minutosDeHora(h.hora);
+            const diferencia = minutosCita - minutosAhora;
+            if (diferencia >= 0 && diferencia <= 30) {
+              avisos.push({
+                eq,
+                clave: `${h.id}_${iso}_${h.hora}_30min`,
+                titulo: `Tienes un mantenimiento en 30 minutos: ${eq.nombre}`,
+                hora: h.hora,
+              });
+            }
           }
         }
-      }
+      });
 
       // Aviso de filtro sucio (independiente de si hay mantenimiento programado)
       if (eq.filtroLimpio) {
@@ -154,13 +163,13 @@ async function main() {
     const notifSnap = await db.collection("usuarios").doc(uid).collection("notificaciones").get();
     const yaNotificado = new Set(notifSnap.docs.map((d) => d.id));
 
-    for (const { eq, clave, titulo, esFiltro, diasFiltro } of avisos) {
+    for (const { eq, clave, titulo, esFiltro, diasFiltro, hora } of avisos) {
       if (yaNotificado.has(clave)) continue;
 
       const cuerpo = esFiltro
         ? `Han pasado ${diasFiltro} días desde la última limpieza${eq.cliente ? " · Cliente: " + eq.cliente : ""}`
         : (eq.cliente
-          ? `Cliente: ${eq.cliente}${eq.marca ? " · " + eq.marca : ""}${eq.hora ? " · " + eq.hora : ""}`
+          ? `Cliente: ${eq.cliente}${eq.marca ? " · " + eq.marca : ""}${hora ? " · " + hora : ""}`
           : (eq.marca || "Revisa el detalle en la app"));
 
       if (tokens.length > 0) {
