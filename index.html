@@ -2786,6 +2786,10 @@ function enviarNotificacion(title, body, tagKey){
 
 // Revisa todos los equipos y notifica los que tengan mantenimiento vencido, hoy o mañana.
 // forzar=true ignora el registro de "ya notificado" (util justo despues de activar permisos).
+// NOTA: el aviso local automático quedó desactivado a propósito. Ahora todos
+// los avisos de mantenimiento los manda el robot de GitHub Actions (mismo
+// aviso, pero sin duplicarlo). Esta función se deja definida por si se
+// necesita reactivar, pero ya no se llama sola.
 function revisarMantenimientosProximos(forzar){
   if(!notificacionesSoportadas() || Notification.permission !== "granted") return;
   const log = forzar ? [] : loadNotifLog();
@@ -2804,7 +2808,7 @@ function revisarMantenimientosProximos(forzar){
     else if(dias === 1) mensaje = `El mantenimiento de "${eq.nombre}" es mañana.`;
     else mensaje = `El mantenimiento de "${eq.nombre}" venció hace ${Math.abs(dias)} día${Math.abs(dias)===1?'':'s'}.`;
 
-    enviarNotificacion("AiresCare · Recordatorio", mensaje, key);
+    // enviarNotificacion("AiresCare · Recordatorio", mensaje, key); // desactivado: lo manda el robot
     log.push(key);
     changed = true;
   });
@@ -2812,12 +2816,7 @@ function revisarMantenimientosProximos(forzar){
   if(changed) saveNotifLog(log);
 }
 
-// Revisar al abrir la app, al volver a ella, y cada 30 minutos mientras este abierta.
-revisarMantenimientosProximos(false);
-document.addEventListener("visibilitychange", ()=>{
-  if(document.visibilityState === "visible") revisarMantenimientosProximos(false);
-});
-setInterval(()=>revisarMantenimientosProximos(false), 30*60*1000);
+// Ya no se revisa sola al abrir/volver a la app ni cada 30 min (ver nota arriba).
 setInterval(()=>cargarNotificaciones(), 5*60*1000);
 document.addEventListener("visibilitychange", ()=>{
   if(document.visibilityState === "visible") cargarNotificaciones();
