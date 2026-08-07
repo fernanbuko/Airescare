@@ -1,0 +1,10 @@
+{
+  "name": "airescare-notificaciones",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Script que revisa mantenimientos proximos y envia notificaciones push (corrido por GitHub Actions).",
+  "main": "send-notifications.js",
+  "dependencies": {
+    "firebase-admin": "^12.1.0"
+  }
+}
