@@ -1,7 +1,9 @@
-// Script que corre GitHub Actions una vez al dia.
-// Revisa TODOS los usuarios de AiresCare, busca equipos con mantenimiento
-// programado para hoy o mañana (hora de Ecuador, UTC-5), y les manda una
-// notificacion push a traves de Firebase Cloud Messaging.
+// Script que corre GitHub Actions cada 30 minutos.
+// Revisa TODOS los usuarios de AiresCare y manda notificaciones push
+// (via Firebase Cloud Messaging) en tres momentos distintos:
+//   1. El dia ANTERIOR al mantenimiento ("Mañana: ...")
+//   2. El mismo dia del mantenimiento ("Hoy: ...")
+//   3. Si el mantenimiento tiene hora puesta, 30 minutos antes de esa hora
 //
 // No necesita el plan de pago de Firebase (Blaze): usar el Admin SDK desde
 // un script externo (como este, corrido por GitHub Actions) es gratis.
@@ -22,13 +24,16 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
-// --- Fecha de "hoy" en Ecuador (UTC-5), sin depender de la zona horaria del runner ---
-function hoyEcuadorISO() {
+// --- Hora actual en Ecuador (UTC-5), sin depender de la zona horaria del runner ---
+function ahoraEcuador() {
   const ahoraUTC = new Date();
-  const ecuador = new Date(ahoraUTC.getTime() - 5 * 60 * 60 * 1000);
-  const y = ecuador.getUTCFullYear();
-  const m = String(ecuador.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(ecuador.getUTCDate()).padStart(2, "0");
+  return new Date(ahoraUTC.getTime() - 5 * 60 * 60 * 1000);
+}
+
+function isoDeFecha(dt) {
+  const y = dt.getUTCFullYear();
+  const m = String(dt.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(dt.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
 
@@ -36,7 +41,7 @@ function sumarDias(iso, dias) {
   const [y, m, d] = iso.split("-").map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
   dt.setUTCDate(dt.getUTCDate() + dias);
-  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+  return isoDeFecha(dt);
 }
 
 function fechaDMYaISO(dmy) {
@@ -45,9 +50,19 @@ function fechaDMYaISO(dmy) {
   return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
 }
 
+// Minutos transcurridos del dia (0-1439) para una hora "HH:MM"
+function minutosDeHora(hora) {
+  const [h, m] = hora.split(":").map(Number);
+  return h * 60 + m;
+}
+
 async function main() {
-  const hoyISO = hoyEcuadorISO();
+  const ahora = ahoraEcuador();
+  const hoyISO = isoDeFecha(ahora);
   const mananaISO = sumarDias(hoyISO, 1);
+  const minutosAhora = ahora.getUTCHours() * 60 + ahora.getUTCMinutes();
+
+  console.log(`Hora Ecuador: ${hoyISO} ${String(ahora.getUTCHours()).padStart(2,"0")}:${String(ahora.getUTCMinutes()).padStart(2,"0")}`);
   console.log(`Revisando mantenimientos para hoy (${hoyISO}) y mañana (${mananaISO})...`);
 
   const usuariosSnap = await db.collection("usuarios").get();
@@ -68,35 +83,59 @@ async function main() {
       continue;
     }
 
-    // Equipos con mantenimiento pendiente para hoy o mañana
-    const pendientesHoyManana = [];
+    // Armar la lista de avisos que le tocan a este usuario en esta corrida
+    const avisos = [];
     equipos.forEach((eq) => {
       if (!eq.proximo) return;
       const iso = fechaDMYaISO(eq.proximo);
-      if (iso === hoyISO || iso === mananaISO) {
-        pendientesHoyManana.push({ eq, iso, esHoy: iso === hoyISO });
+
+      if (iso === mananaISO) {
+        avisos.push({
+          eq,
+          clave: `${eq.id}_${iso}_manana`,
+          titulo: `Mañana: mantenimiento de ${eq.nombre}`,
+        });
+      }
+
+      if (iso === hoyISO) {
+        avisos.push({
+          eq,
+          clave: `${eq.id}_${iso}_hoy`,
+          titulo: `Hoy: mantenimiento de ${eq.nombre}`,
+        });
+
+        // Recordatorio 30 minutos antes, solo si tiene hora puesta
+        if (eq.hora) {
+          const minutosCita = minutosDeHora(eq.hora);
+          const diferencia = minutosCita - minutosAhora;
+          if (diferencia >= 0 && diferencia <= 30) {
+            avisos.push({
+              eq,
+              clave: `${eq.id}_${iso}_${eq.hora}_30min`,
+              titulo: `En 30 minutos: mantenimiento de ${eq.nombre}`,
+            });
+          }
+        }
       }
     });
-    if (pendientesHoyManana.length === 0) continue;
+    if (avisos.length === 0) continue;
 
     // Tokens de notificacion push registrados por este usuario
     const tokensSnap = await db.collection("usuarios").doc(uid).collection("tokens").get();
     const tokens = tokensSnap.docs.map((t) => t.id);
     if (tokens.length === 0) continue;
 
-    // Registro de lo ya notificado, para no repetir el mismo aviso cada dia
+    // Registro de lo ya notificado, para no repetir el mismo aviso
     const logRef = db.collection("usuarios").doc(uid).collection("notifLog").doc("log");
     const logSnap = await logRef.get();
     const yaNotificado = logSnap.exists ? (logSnap.data().claves || []) : [];
     const nuevasClaves = [];
 
-    for (const { eq, iso, esHoy } of pendientesHoyManana) {
-      const clave = `${eq.id}_${iso}`;
+    for (const { eq, clave, titulo } of avisos) {
       if (yaNotificado.includes(clave)) continue;
 
-      const titulo = `${esHoy ? "Hoy" : "Mañana"}: mantenimiento de ${eq.nombre}`;
       const cuerpo = eq.cliente
-        ? `Cliente: ${eq.cliente}${eq.marca ? " · " + eq.marca : ""}`
+        ? `Cliente: ${eq.cliente}${eq.marca ? " · " + eq.marca : ""}${eq.hora ? " · " + eq.hora : ""}`
         : (eq.marca || "Revisa el detalle en la app");
 
       try {
