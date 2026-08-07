@@ -167,6 +167,13 @@
   }
   .topbar .title{ font-weight:700; font-size:17px; color:var(--ink); }
   .iconbtn{ background:none; border:none; padding:6px; margin:-6px; display:flex; }
+  .topbar-avatar{
+    display:none; width:34px; height:34px; border-radius:999px; background:var(--chip-bg);
+    align-items:center; justify-content:center; border:none; cursor:pointer; flex-shrink:0; padding:0;
+  }
+  @media (min-width: 900px){
+    .topbar-avatar{ display:flex; }
+  }
   .scroll{ flex:1; overflow-y:auto; padding:0 20px calc(84px + env(safe-area-inset-bottom,0px)); -webkit-overflow-scrolling:touch; }
   .bottomnav{
     display:grid; grid-template-columns:repeat(5,1fr); align-items:center; justify-items:center;
@@ -955,8 +962,9 @@ function screenHome(){
   if(eqs.length === 0){
     return `
       <div class="screen">
-        <div style="padding: 14px 20px 0; display:flex; justify-content:flex-end;">
+        <div style="padding: 14px 20px 0; display:flex; justify-content:flex-end; align-items:center; gap:10px;">
           <button class="iconbtn">${svg('bell',22,'var(--ink)')}</button>
+          <button class="topbar-avatar" onclick="go('perfil')">${svg('user',17,'var(--ink-soft)')}</button>
         </div>
         <div class="scroll" style="display:flex; flex-direction:column;">
           <div style="font-size:22px; font-weight:800;">¡Hola${state.perfil.nombre ? ", " + state.perfil.nombre : ""}!</div>
@@ -983,8 +991,9 @@ function screenHome(){
 
   return `
     <div class="screen">
-      <div style="padding: 14px 20px 0; display:flex; justify-content:flex-end;">
+      <div style="padding: 14px 20px 0; display:flex; justify-content:flex-end; align-items:center; gap:10px;">
         <button class="iconbtn">${svg('bell',22,'var(--ink)')}</button>
+        <button class="topbar-avatar" onclick="go('perfil')">${svg('user',17,'var(--ink-soft)')}</button>
       </div>
       <div class="scroll">
         <div style="font-size:22px; font-weight:800;">¡Hola${state.perfil.nombre ? ", " + state.perfil.nombre : ""}!</div>
