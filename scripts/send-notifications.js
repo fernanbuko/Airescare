@@ -154,7 +154,6 @@ async function actualizarPanelAdmin() {
   try {
     const usuarios = await db.collection("usuarios").listDocuments();
     const cuentas = [];
-    let totalEquipos = 0;
 
     for (const usuarioRef of usuarios) {
       if (usuarioRef.id === ADMIN_UID) continue; // tu propia cuenta no cuenta
@@ -163,12 +162,6 @@ async function actualizarPanelAdmin() {
       if (!snap.exists) continue;
       const data = snap.data();
 
-      let equipos = [];
-      try {
-        equipos = data.equipos ? JSON.parse(data.equipos) : [];
-      } catch (e) {
-        equipos = [];
-      }
       let perfil = {};
       try {
         perfil = data.perfil ? JSON.parse(data.perfil) : {};
@@ -200,7 +193,6 @@ async function actualizarPanelAdmin() {
         ultimaConexion = null;
       }
 
-      totalEquipos += equipos.length;
       cuentas.push({
         uid: usuarioRef.id,
         correo,
@@ -210,7 +202,6 @@ async function actualizarPanelAdmin() {
         logo: perfil.negocioLogo || perfil.foto || "",
         fechaRegistro: fechaCreacionAuth,
         ultimaConexion,
-        equipos: equipos.length,
       });
     }
 
@@ -225,11 +216,10 @@ async function actualizarPanelAdmin() {
     const resumen = {
       actualizadoEn: Date.now(),
       totalCuentas: cuentas.length,
-      totalEquipos,
       cuentas,
     };
     await panelRef.set(resumen);
-    console.log(`Panel de administración actualizado: ${cuentas.length} cuenta(s), ${totalEquipos} equipo(s) en total.`);
+    console.log(`Panel de administración actualizado: ${cuentas.length} cuenta(s).`);
 
     if (cuentasNuevas.length > 0) {
       const tokensSnap = await db.collection("usuarios").doc(ADMIN_UID).collection("tokens").get();
