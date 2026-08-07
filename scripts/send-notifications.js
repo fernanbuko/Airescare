@@ -56,6 +56,16 @@ function minutosDeHora(hora) {
   return h * 60 + m;
 }
 
+const FILTRO_FRECUENCIA_DIAS = 14; // debe coincidir con el mismo valor en index.html
+
+function diasEntreISO(isoDesde, isoHasta) {
+  const [y1, m1, d1] = isoDesde.split("-").map(Number);
+  const [y2, m2, d2] = isoHasta.split("-").map(Number);
+  const t1 = Date.UTC(y1, m1 - 1, d1);
+  const t2 = Date.UTC(y2, m2 - 1, d2);
+  return Math.floor((t2 - t1) / 86400000);
+}
+
 async function main() {
   const ahora = ahoraEcuador();
   const hoyISO = isoDeFecha(ahora);
@@ -117,6 +127,21 @@ async function main() {
           }
         }
       }
+
+      // Aviso de filtro sucio (independiente de si hay mantenimiento programado)
+      if (eq.filtroLimpio) {
+        const isoFiltro = fechaDMYaISO(eq.filtroLimpio);
+        const diasFiltro = diasEntreISO(isoFiltro, hoyISO);
+        if (diasFiltro >= FILTRO_FRECUENCIA_DIAS) {
+          avisos.push({
+            eq,
+            clave: `${eq.id}_${isoFiltro}_filtro`,
+            titulo: `Toca limpiar el filtro de ${eq.nombre}`,
+            esFiltro: true,
+            diasFiltro,
+          });
+        }
+      }
     });
     if (avisos.length === 0) continue;
 
@@ -129,12 +154,14 @@ async function main() {
     const notifSnap = await db.collection("usuarios").doc(uid).collection("notificaciones").get();
     const yaNotificado = new Set(notifSnap.docs.map((d) => d.id));
 
-    for (const { eq, clave, titulo } of avisos) {
+    for (const { eq, clave, titulo, esFiltro, diasFiltro } of avisos) {
       if (yaNotificado.has(clave)) continue;
 
-      const cuerpo = eq.cliente
-        ? `Cliente: ${eq.cliente}${eq.marca ? " · " + eq.marca : ""}${eq.hora ? " · " + eq.hora : ""}`
-        : (eq.marca || "Revisa el detalle en la app");
+      const cuerpo = esFiltro
+        ? `Han pasado ${diasFiltro} días desde la última limpieza${eq.cliente ? " · Cliente: " + eq.cliente : ""}`
+        : (eq.cliente
+          ? `Cliente: ${eq.cliente}${eq.marca ? " · " + eq.marca : ""}${eq.hora ? " · " + eq.hora : ""}`
+          : (eq.marca || "Revisa el detalle en la app"));
 
       if (tokens.length > 0) {
         try {
