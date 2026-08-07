@@ -329,6 +329,10 @@
   <span>Instala AiresCare en tu pantalla de inicio</span>
   <button id="installBtn">Instalar</button>
 </div>
+<div class="install-banner" id="iosBanner" style="background:var(--warn); display:none;">
+  <span>📲 Para que funcione bien sin internet, agrégala a tu pantalla de inicio: toca Compartir → "Agregar a pantalla de inicio"</span>
+  <button id="iosBannerBtn">Entendido</button>
+</div>
 <div class="confirm-overlay" id="confirmOverlay">
   <div class="confirm-box">
     <p id="confirmMessage"></p>
@@ -485,6 +489,7 @@ function escucharBloqueoPropio(){
 function manejarBloqueo(){
   if(unsubscribeBloqueo){ unsubscribeBloqueo(); unsubscribeBloqueo = null; }
   bloqueoMostrado = true;
+  try{ localStorage.removeItem(SESION_BACKUP_KEY); }catch(e){}
   state.usuario = null;
   go("bloqueado", true);
   if(auth) auth.signOut();
@@ -606,9 +611,37 @@ const VAPID_KEY = "BC5OHxGW471nz014ViU9miHHxdc3m2dKDpLCMGGAAcan27xQs0_eYxspXR2GL
 try{
   firebase.initializeApp(firebaseConfig);
   db = firebase.firestore();
+
+  // Le pide al navegador que NO borre lo guardado bajo presión de espacio
+  // — especialmente importante en iPhone/Safari, que por defecto es
+  // mucho más agresivo que Android borrando datos de sitios que no se
+  // han abierto en unos días (a menos que la app esté "Agregada a
+  // pantalla de inicio", donde iOS respeta esto mucho mejor).
+  if(navigator.storage && navigator.storage.persist){
+    navigator.storage.persist().catch(()=>{});
+  }
+
+  // Modo sin conexión de Firestore: guarda una copia local de los datos
+  // ya vistos, permite seguir leyendo (y encolar escrituras) sin
+  // internet, y sincroniza solo en cuanto vuelve la conexión.
+  db.enablePersistence({ synchronizeTabs: true }).catch((e)=>{
+    console.error("No se pudo activar el modo sin conexión de Firestore:", e);
+  });
+
   auth = firebase.auth();
   if(firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported()){
     messaging = firebase.messaging();
+    // Con la app ABIERTA y a la vista, el navegador no muestra la
+    // notificación como alerta del sistema por su cuenta (eso solo pasa
+    // solo si está cerrada o en segundo plano) — así que se muestra a
+    // mano también en ese caso.
+    messaging.onMessage((payload)=>{
+      if(!notificacionesSoportadas() || Notification.permission !== "granted") return;
+      const titulo = (payload.data && payload.data.title) || "AiresCare";
+      const cuerpo = (payload.data && payload.data.body) || "";
+      try{ new Notification(titulo, { body: cuerpo, icon: "icon-192.png" }); }catch(e){}
+      cargarNotificaciones();
+    });
   }
 }catch(e){
   console.error("No se pudo inicializar Firebase:", e);
@@ -695,15 +728,49 @@ function iniciarSesionGoogle(){
 function cerrarSesion(){
   showConfirm("¿Cerrar sesión? Tus datos siguen guardados en la nube con tu cuenta de Google, puedes volver a entrar cuando quieras.", () => {
     if(unsubscribeBloqueo){ unsubscribeBloqueo(); unsubscribeBloqueo = null; }
+    try{ localStorage.removeItem(SESION_BACKUP_KEY); }catch(e){}
     auth.signOut();
   }, "Cerrar sesión", "primary");
 }
+
+const SESION_BACKUP_KEY = "airescare_ultima_sesion";
+let temporizadorSinSesion = null;
 
 if(auth){
   auth.onAuthStateChanged(async (user)=>{
     authListo = true;
     if(user){
+      // Llegó una sesión real: se cancela cualquier "sin sesión" que
+      // estuviera por confirmarse (ver más abajo).
+      if(temporizadorSinSesion){ clearTimeout(temporizadorSinSesion); temporizadorSinSesion = null; }
+
+      // Si esta cuenta fue eliminada por un administrador, no se deja
+      // pasar. Con límite de tiempo: sin conexión, esta comprobación no
+      // debe dejar a nadie atascado en el login si en realidad ya tiene
+      // una sesión guardada.
+      if(db){
+        try{
+          const registro = await Promise.race([
+            db.collection("sistema").doc("cuentasEliminadas").get(),
+            new Promise((_,rechazar)=>setTimeout(()=>rechazar(new Error("tiempo de espera agotado")), 2500))
+          ]);
+          const correos = registro.exists ? (registro.data().correos || []) : [];
+          if(user.email && correos.includes(user.email)){
+            await auth.signOut();
+            try{ localStorage.removeItem(SESION_BACKUP_KEY); }catch(e){}
+            state.usuario = null;
+            go("cuentaEliminada", true);
+            return;
+          }
+        }catch(e){ /* si falla o tarda demasiado (sin conexión), no se bloquea el inicio de sesión por esto */ }
+      }
+
       state.usuario = { uid: user.uid, nombre: user.displayName || "", correo: user.email || "", foto: user.photoURL || "" };
+      // Copia mínima de "quién eras la última vez que sí hubo sesión
+      // confirmada" — es lo que permite seguir entrando sin conexión más
+      // abajo (ver el porqué en el comentario del temporizador).
+      try{ localStorage.setItem(SESION_BACKUP_KEY, JSON.stringify(state.usuario)); }catch(e){}
+
       const necesitaOnboarding = await sincronizarDesdeNube();
       if(!state.usuario) return; // se detectó bloqueo durante la sincronización
       if(notificacionesSoportadas() && Notification.permission === "granted") registrarTokenFCM();
@@ -713,9 +780,35 @@ if(auth){
       else if(state.screen === "login" || state.screen === "cargando") go("home", true);
       else render();
     } else {
-      state.usuario = null;
-      if(bloqueoMostrado){ bloqueoMostrado = false; return; }
-      go("login", true);
+      // Firebase a veces avisa "sin sesión" muy rápido, un instante antes
+      // de terminar de restaurar una sesión guardada — por eso no se
+      // confía de una vez: se espera un poquito por si justo después
+      // llega la sesión real (lo cual cancela este aviso, arriba).
+      //
+      // Es un problema documentado de Firebase con Safari/iOS: el token
+      // de sesión vence cada hora, y si el celular intenta renovarlo SIN
+      // internet, esa renovación puede fallar y Firebase termina
+      // reportando "sin sesión" — aunque la persona sí tenga una sesión
+      // guardada y solo esté sin conexión. Por eso, si hay una sesión
+      // guardada de la última vez que sí se confirmó, se usa esa en vez
+      // de mandar al login — Firestore (con su caché local ya activada
+      // arriba) se encarga de que todo siga funcionando con esos datos.
+      if(temporizadorSinSesion) clearTimeout(temporizadorSinSesion);
+      temporizadorSinSesion = setTimeout(()=>{
+        try{
+          const guardada = JSON.parse(localStorage.getItem(SESION_BACKUP_KEY) || "null");
+          if(guardada && guardada.uid){
+            state.usuario = guardada;
+            if(state.screen === "login" || state.screen === "cargando") go("home", true);
+            else render();
+            cargarNotificaciones();
+            return;
+          }
+        }catch(e){}
+        state.usuario = null;
+        if(bloqueoMostrado){ bloqueoMostrado = false; return; }
+        go("login", true);
+      }, 400);
     }
   });
 }
@@ -1093,6 +1186,22 @@ function screenBloqueado(){
         <div style="font-weight:800; font-size:19px; margin-top:18px; color:var(--ink);">Cuenta bloqueada</div>
         <div style="font-size:13.5px; color:var(--ink-soft); margin-top:8px; line-height:1.5;">
           Tu acceso a AiresCare fue restringido por un administrador. Si creés que es un error, contactá a quien administra la cuenta.
+        </div>
+        <button class="btn-primary" style="margin-top:24px; width:auto; padding:12px 28px;" onclick="go('login')">Entendido</button>
+      </div>
+    </div>`;
+}
+
+function screenCuentaEliminada(){
+  return `
+    <div class="screen" style="align-items:center; justify-content:center; display:flex; padding:20px;">
+      <div style="display:flex; flex-direction:column; align-items:center; text-align:center; max-width:320px;">
+        <div style="width:64px; height:64px; border-radius:999px; background:#FBE7E7; display:flex; align-items:center; justify-content:center;">
+          ${svg('trash',28,'#D64545')}
+        </div>
+        <div style="font-weight:800; font-size:19px; margin-top:18px; color:var(--ink);">Cuenta eliminada</div>
+        <div style="font-size:13.5px; color:var(--ink-soft); margin-top:8px; line-height:1.5;">
+          Esta cuenta fue eliminada por un administrador junto con todos sus datos. Si creés que es un error, contactá a quien administra la cuenta.
         </div>
         <button class="btn-primary" style="margin-top:24px; width:auto; padding:12px 28px;" onclick="go('login')">Entendido</button>
       </div>
@@ -2636,7 +2745,6 @@ function screenPerfil(){
             ${estadoSync==="idle" ? `<span style="color:var(--ink-soft);">Sin sincronizar todavía</span>` : ""}
           </div>
           <button class="btn-outline" style="margin-top:12px;" onclick="sincronizarDesdeNube()">SINCRONIZAR AHORA</button>
-          ${esAdmin() ? `<button class="btn-outline" style="margin-top:10px; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="abrirPanelAdmin()">${svg('lock',15,'var(--primary)')} PANEL DE ADMINISTRACIÓN</button>` : ""}
           <button style="width:100%; background:none; border:none; margin-top:10px; padding:6px; text-align:center; font-size:12.5px; color:#D64545; font-weight:700; cursor:pointer;" onclick="cerrarSesion()">Cerrar sesión</button>
         </div>
 
@@ -2749,6 +2857,7 @@ function render(){
     login: screenLogin,
     notificaciones: screenNotificaciones,
     bloqueado: screenBloqueado,
+    cuentaEliminada: screenCuentaEliminada,
     bienvenida: screenBienvenida,
     home: screenHome,
     equipos: screenEquipos,
@@ -2817,7 +2926,7 @@ function updateSidebarActive(){
   const linkAdmin = document.getElementById("sidebarLinkAdmin");
   if(linkAdmin) linkAdmin.style.display = esAdmin() ? "flex" : "none";
 
-  const esPantallaAuth = state.screen === "cargando" || state.screen === "login" || state.screen === "bienvenida" || state.screen === "bloqueado";
+  const esPantallaAuth = state.screen === "cargando" || state.screen === "login" || state.screen === "bienvenida" || state.screen === "bloqueado" || state.screen === "cuentaEliminada";
   const mobileTop = document.getElementById("mobileTopbar");
   const sidebarEl = document.getElementById("sidebar");
   if(mobileTop) mobileTop.style.display = esPantallaAuth ? "none" : "";
@@ -2881,6 +2990,29 @@ document.getElementById("installBtn").addEventListener("click", async ()=>{
 });
 window.addEventListener("appinstalled", ()=>{
   document.getElementById("installBanner").style.display = "none";
+});
+
+/* ---------- Sugerencia para iPhone: agregar a pantalla de inicio ---------- */
+try{
+  const esIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const yaInstalada = window.navigator.standalone === true;
+  const yaSugerido = localStorage.getItem("airescare_sugerencia_ios") === "1";
+  if(esIOS && !yaInstalada && !yaSugerido){
+    document.getElementById("iosBanner").style.display = "flex";
+  }
+}catch(e){}
+document.getElementById("iosBannerBtn").addEventListener("click", ()=>{
+  document.getElementById("iosBanner").style.display = "none";
+  try{ localStorage.setItem("airescare_sugerencia_ios", "1"); }catch(e){}
+});
+
+/* ---------- Aviso de conexión perdida/recuperada ---------- */
+window.addEventListener("online", ()=>{
+  showToast("Conexión recuperada — sincronizando...");
+  sincronizarDesdeNube();
+});
+window.addEventListener("offline", ()=>{
+  showToast("📴 Sin conexión — se sincroniza al reconectar");
 });
 
 /* ---------- Notificaciones de mantenimiento ---------- */
