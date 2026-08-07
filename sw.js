@@ -1,4 +1,4 @@
-const CACHE_NAME = "airescare-cache-v23";
+const CACHE_NAME = "airescare-cache-v24";
 const ASSETS = [
   "./",
   "./index.html",
@@ -28,9 +28,9 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
-  const titulo = (payload.notification && payload.notification.title) || "AiresCare";
+  const titulo = (payload.data && payload.data.title) || "AiresCare";
   const opciones = {
-    body: (payload.notification && payload.notification.body) || "",
+    body: (payload.data && payload.data.body) || "",
     icon: "icon-192.png",
     badge: "icon-192.png",
     tag: (payload.data && payload.data.tag) || undefined
