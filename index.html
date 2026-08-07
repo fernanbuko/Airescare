@@ -935,7 +935,9 @@ function go(screen, replace){
   state.screen = screen;
   render();
   document.querySelector(".scroll") && (document.querySelector(".scroll").scrollTop = 0);
-  if(screen === "notificaciones") marcarNotificacionesLeidas();
+  if(screen === "notificaciones"){
+    cargarNotificaciones().then(()=>marcarNotificacionesLeidas());
+  }
   if(replace){
     history.replaceState({screen}, "", "");
   } else {
