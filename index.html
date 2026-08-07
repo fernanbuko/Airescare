@@ -331,6 +331,7 @@ const ICON = {
   whatsapp: `<path d="M6 18l1.1-3.2A6.8 6.8 0 1 1 10 17l-4 1z"/><path d="M8.8 9.6c0 3 2.6 5.6 5.6 5.6"/>`,
   mapPin: `<path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>`,
   cash: `<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 9v.01M18 15v.01"/>`,
+  camera: `<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/>`,
   calendarDays: `<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/>`,
   search: `<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>`
 };
@@ -392,7 +393,7 @@ function loadPerfil(){
     const raw = localStorage.getItem(PERFIL_KEY);
     if(raw) return JSON.parse(raw);
   }catch(e){}
-  return { nombre: "", correo: "", telefono: "", foto: "", negocioNombre: "", negocioLogo: "" };
+  return { nombre: "", correo: "", telefono: "", foto: "", negocioNombre: "", negocioLogo: "", onboardingCompletado: false };
 }
 function savePerfil(perfil, subirNube){
   try{ localStorage.setItem(PERFIL_KEY, JSON.stringify(perfil)); }catch(e){}
@@ -477,11 +478,11 @@ async function sincronizarDesdeNube(){
       if(data.perfil){ state.perfil = JSON.parse(data.perfil); savePerfil(state.perfil, false); }
       estadoSync = "ok";
       ultimaSyncFecha = new Date();
-      necesitaOnboarding = !state.perfil.nombre && !state.onboardingOmitido;
+      necesitaOnboarding = !state.perfil.onboardingCompletado;
       render();
     } else {
       // Primera vez de este usuario: sube lo que ya tenga localmente en este dispositivo
-      necesitaOnboarding = !state.perfil.nombre;
+      necesitaOnboarding = !state.perfil.onboardingCompletado;
       await subirANube();
     }
   }catch(e){
@@ -882,24 +883,37 @@ function screenBienvenida(){
           </div>
         </div>
 
-        <div style="display:flex; justify-content:center; gap:26px; margin-top:28px;">
-          <div style="text-align:center;">
-            <button onclick="document.getElementById('bv-foto-input').click()" style="width:84px; height:84px; border-radius:999px; border:2px dashed var(--line); background:var(--chip-bg); display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:pointer; padding:0;">
-              ${p.foto ? `<img src="${p.foto}" style="width:100%; height:100%; object-fit:cover;" alt="" />` : svg('user',28,'var(--primary)')}
-            </button>
-            <input type="file" id="bv-foto-input" accept="image/*" style="display:none;" onchange="manejarFotoInput(this, 400, (url)=>{ state.perfil.foto = url; render(); })" />
-            <div style="font-size:11px; color:var(--ink-soft); margin-top:6px;">Tu foto</div>
+        <div style="margin-top:26px;">
+          <div style="font-size:11px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px; margin-bottom:8px;">Tu foto de perfil</div>
+          <div style="display:flex; align-items:center; gap:14px; margin-bottom:20px;">
+            <div style="width:64px; height:64px; border-radius:999px; overflow:hidden; background:var(--chip-bg); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+              ${p.foto ? `<img src="${p.foto}" style="width:100%; height:100%; object-fit:cover;" alt="" />` : svg('user',24,'var(--primary)')}
+            </div>
+            <div style="display:flex; flex-direction:column; gap:5px; align-items:flex-start;">
+              <button type="button" onclick="document.getElementById('bv-foto-galeria').click()" style="background:none; border:none; padding:0; color:var(--mint); font-size:12.5px; font-weight:700; cursor:pointer;">Cambiar foto</button>
+              <button type="button" onclick="document.getElementById('bv-foto-camara').click()" style="background:none; border:none; padding:0; color:var(--primary); font-size:12.5px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:5px;">${svg('camera',13,'var(--primary)')} Tomar foto</button>
+              ${p.foto ? `<button type="button" onclick="state.perfil.foto=''; render();" style="background:none; border:none; padding:0; color:var(--warn); font-size:12.5px; font-weight:700; cursor:pointer;">Quitar foto</button>` : ""}
+            </div>
           </div>
-          <div style="text-align:center;">
-            <button onclick="document.getElementById('bv-logo-input').click()" style="width:84px; height:84px; border-radius:20px; border:2px dashed var(--line); background:var(--chip-bg); display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:pointer; padding:0;">
-              ${p.negocioLogo ? `<img src="${p.negocioLogo}" style="width:100%; height:100%; object-fit:cover;" alt="" />` : svg('ac',28,'var(--primary)')}
-            </button>
-            <input type="file" id="bv-logo-input" accept="image/*" style="display:none;" onchange="manejarFotoInput(this, 400, (url)=>{ state.perfil.negocioLogo = url; render(); })" />
-            <div style="font-size:11px; color:var(--ink-soft); margin-top:6px;">Logo del negocio</div>
+          <input type="file" id="bv-foto-galeria" accept="image/*" style="display:none;" onchange="manejarFotoInput(this, 400, (url)=>{ state.perfil.foto = url; render(); })" />
+          <input type="file" id="bv-foto-camara" accept="image/*" capture="user" style="display:none;" onchange="manejarFotoInput(this, 400, (url)=>{ state.perfil.foto = url; render(); })" />
+
+          <div style="font-size:11px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px; margin-bottom:8px;">Logo del negocio</div>
+          <div style="display:flex; align-items:center; gap:14px; margin-bottom:8px;">
+            <div style="width:64px; height:64px; border-radius:16px; overflow:hidden; background:var(--chip-bg); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+              ${p.negocioLogo ? `<img src="${p.negocioLogo}" style="width:100%; height:100%; object-fit:cover;" alt="" />` : svg('ac',24,'var(--primary)')}
+            </div>
+            <div style="display:flex; flex-direction:column; gap:5px; align-items:flex-start;">
+              <button type="button" onclick="document.getElementById('bv-logo-galeria').click()" style="background:none; border:none; padding:0; color:var(--mint); font-size:12.5px; font-weight:700; cursor:pointer;">Cambiar logo</button>
+              <button type="button" onclick="document.getElementById('bv-logo-camara').click()" style="background:none; border:none; padding:0; color:var(--primary); font-size:12.5px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:5px;">${svg('camera',13,'var(--primary)')} Tomar foto</button>
+              ${p.negocioLogo ? `<button type="button" onclick="state.perfil.negocioLogo=''; render();" style="background:none; border:none; padding:0; color:var(--warn); font-size:12.5px; font-weight:700; cursor:pointer;">Quitar logo</button>` : ""}
+            </div>
           </div>
+          <input type="file" id="bv-logo-galeria" accept="image/*" style="display:none;" onchange="manejarFotoInput(this, 400, (url)=>{ state.perfil.negocioLogo = url; render(); })" />
+          <input type="file" id="bv-logo-camara" accept="image/*" capture="environment" style="display:none;" onchange="manejarFotoInput(this, 400, (url)=>{ state.perfil.negocioLogo = url; render(); })" />
         </div>
 
-        <div style="margin-top:26px;">
+        <div style="margin-top:10px;">
           <label class="field-label" style="margin-top:0;">Tu nombre</label>
           <input class="field-input" id="bv-nombre" type="text" value="${p.nombre||""}" placeholder="Ej: Fernando Tapia" />
 
@@ -923,14 +937,15 @@ function guardarBienvenida(){
   state.perfil.nombre = nombre;
   state.perfil.negocioNombre = negocioNombre;
   state.perfil.telefono = telefono;
+  state.perfil.onboardingCompletado = true;
   savePerfil(state.perfil);
-  state.onboardingOmitido = true;
   showToast("¡Listo! Ya puedes empezar.");
   go("home", true);
 }
 
 function omitirBienvenida(){
-  state.onboardingOmitido = true;
+  state.perfil.onboardingCompletado = true;
+  savePerfil(state.perfil);
   go("home", true);
 }
 
@@ -2212,22 +2227,33 @@ function screenPerfil(){
 
         <div style="margin-top:22px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Datos personales</div>
         <div class="card" style="margin-top:8px;">
-          <div style="display:flex; justify-content:center; gap:22px; margin-bottom:6px;">
-            <div style="text-align:center;">
-              <button onclick="document.getElementById('pf-foto-input').click()" style="width:66px; height:66px; border-radius:999px; border:2px dashed var(--line); background:var(--chip-bg); display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:pointer; padding:0;">
-                ${p.foto ? `<img src="${p.foto}" style="width:100%; height:100%; object-fit:cover;" alt="" />` : svg('user',22,'var(--primary)')}
-              </button>
-              <input type="file" id="pf-foto-input" accept="image/*" style="display:none;" onchange="manejarFotoInput(this, 400, (url)=>{ state.perfil.foto = url; savePerfil(state.perfil); render(); })" />
-              <div style="font-size:10.5px; color:var(--ink-soft); margin-top:4px;">Tu foto</div>
+          <div style="font-size:11px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px; margin-bottom:8px;">Tu foto de perfil</div>
+          <div style="display:flex; align-items:center; gap:14px; margin-bottom:20px;">
+            <div style="width:58px; height:58px; border-radius:999px; overflow:hidden; background:var(--chip-bg); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+              ${p.foto ? `<img src="${p.foto}" style="width:100%; height:100%; object-fit:cover;" alt="" />` : svg('user',22,'var(--primary)')}
             </div>
-            <div style="text-align:center;">
-              <button onclick="document.getElementById('pf-logo-input').click()" style="width:66px; height:66px; border-radius:16px; border:2px dashed var(--line); background:var(--chip-bg); display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:pointer; padding:0;">
-                ${p.negocioLogo ? `<img src="${p.negocioLogo}" style="width:100%; height:100%; object-fit:cover;" alt="" />` : svg('ac',22,'var(--primary)')}
-              </button>
-              <input type="file" id="pf-logo-input" accept="image/*" style="display:none;" onchange="manejarFotoInput(this, 400, (url)=>{ state.perfil.negocioLogo = url; savePerfil(state.perfil); render(); })" />
-              <div style="font-size:10.5px; color:var(--ink-soft); margin-top:4px;">Logo del negocio</div>
+            <div style="display:flex; flex-direction:column; gap:5px; align-items:flex-start;">
+              <button type="button" onclick="document.getElementById('pf-foto-galeria').click()" style="background:none; border:none; padding:0; color:var(--mint); font-size:12.5px; font-weight:700; cursor:pointer;">Cambiar foto</button>
+              <button type="button" onclick="document.getElementById('pf-foto-camara').click()" style="background:none; border:none; padding:0; color:var(--primary); font-size:12.5px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:5px;">${svg('camera',13,'var(--primary)')} Tomar foto</button>
+              ${p.foto ? `<button type="button" onclick="state.perfil.foto=''; savePerfil(state.perfil); render();" style="background:none; border:none; padding:0; color:var(--warn); font-size:12.5px; font-weight:700; cursor:pointer;">Quitar foto</button>` : ""}
             </div>
           </div>
+          <input type="file" id="pf-foto-galeria" accept="image/*" style="display:none;" onchange="manejarFotoInput(this, 400, (url)=>{ state.perfil.foto = url; savePerfil(state.perfil); render(); })" />
+          <input type="file" id="pf-foto-camara" accept="image/*" capture="user" style="display:none;" onchange="manejarFotoInput(this, 400, (url)=>{ state.perfil.foto = url; savePerfil(state.perfil); render(); })" />
+
+          <div style="font-size:11px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px; margin-bottom:8px;">Logo del negocio</div>
+          <div style="display:flex; align-items:center; gap:14px; margin-bottom:6px;">
+            <div style="width:58px; height:58px; border-radius:14px; overflow:hidden; background:var(--chip-bg); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+              ${p.negocioLogo ? `<img src="${p.negocioLogo}" style="width:100%; height:100%; object-fit:cover;" alt="" />` : svg('ac',22,'var(--primary)')}
+            </div>
+            <div style="display:flex; flex-direction:column; gap:5px; align-items:flex-start;">
+              <button type="button" onclick="document.getElementById('pf-logo-galeria').click()" style="background:none; border:none; padding:0; color:var(--mint); font-size:12.5px; font-weight:700; cursor:pointer;">Cambiar logo</button>
+              <button type="button" onclick="document.getElementById('pf-logo-camara').click()" style="background:none; border:none; padding:0; color:var(--primary); font-size:12.5px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:5px;">${svg('camera',13,'var(--primary)')} Tomar foto</button>
+              ${p.negocioLogo ? `<button type="button" onclick="state.perfil.negocioLogo=''; savePerfil(state.perfil); render();" style="background:none; border:none; padding:0; color:var(--warn); font-size:12.5px; font-weight:700; cursor:pointer;">Quitar logo</button>` : ""}
+            </div>
+          </div>
+          <input type="file" id="pf-logo-galeria" accept="image/*" style="display:none;" onchange="manejarFotoInput(this, 400, (url)=>{ state.perfil.negocioLogo = url; savePerfil(state.perfil); render(); })" />
+          <input type="file" id="pf-logo-camara" accept="image/*" capture="environment" style="display:none;" onchange="manejarFotoInput(this, 400, (url)=>{ state.perfil.negocioLogo = url; savePerfil(state.perfil); render(); })" />
 
           <label class="field-label">Nombre</label>
           <input class="field-input" id="pf-nombre" type="text" value="${p.nombre||""}" placeholder="Tu nombre" />
