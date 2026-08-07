@@ -392,7 +392,7 @@ function loadPerfil(){
     const raw = localStorage.getItem(PERFIL_KEY);
     if(raw) return JSON.parse(raw);
   }catch(e){}
-  return { nombre: "", correo: "", telefono: "" };
+  return { nombre: "", correo: "", telefono: "", foto: "", negocioNombre: "", negocioLogo: "" };
 }
 function savePerfil(perfil, subirNube){
   try{ localStorage.setItem(PERFIL_KEY, JSON.stringify(perfil)); }catch(e){}
@@ -465,9 +465,10 @@ async function subirANube(){
 }
 
 async function sincronizarDesdeNube(){
-  if(!db || !state.usuario) return;
+  if(!db || !state.usuario) return false;
   estadoSync = "syncing";
   if(state.screen === "perfil") render();
+  let necesitaOnboarding = false;
   try{
     const doc = await docUsuario().get();
     if(doc.exists){
@@ -476,9 +477,11 @@ async function sincronizarDesdeNube(){
       if(data.perfil){ state.perfil = JSON.parse(data.perfil); savePerfil(state.perfil, false); }
       estadoSync = "ok";
       ultimaSyncFecha = new Date();
+      necesitaOnboarding = !state.perfil.nombre && !state.onboardingOmitido;
       render();
     } else {
       // Primera vez de este usuario: sube lo que ya tenga localmente en este dispositivo
+      necesitaOnboarding = !state.perfil.nombre;
       await subirANube();
     }
   }catch(e){
@@ -486,6 +489,7 @@ async function sincronizarDesdeNube(){
     estadoSync = "error";
     if(state.screen === "perfil") render();
   }
+  return necesitaOnboarding;
 }
 
 function iniciarSesionGoogle(){
@@ -504,12 +508,13 @@ function cerrarSesion(){
 }
 
 if(auth){
-  auth.onAuthStateChanged((user)=>{
+  auth.onAuthStateChanged(async (user)=>{
     authListo = true;
     if(user){
       state.usuario = { uid: user.uid, nombre: user.displayName || "", correo: user.email || "", foto: user.photoURL || "" };
-      sincronizarDesdeNube();
-      if(state.screen === "login") go("home", true);
+      const necesitaOnboarding = await sincronizarDesdeNube();
+      if(necesitaOnboarding) go("bienvenida", true);
+      else if(state.screen === "login" || state.screen === "cargando") go("home", true);
       else render();
     } else {
       state.usuario = null;
@@ -555,7 +560,8 @@ let state = {
   equiposBusqueda: "",
   comprobanteEquipoId: null,
   comprobanteHistorialId: null,
-  usuario: null
+  usuario: null,
+  onboardingOmitido: false
 };
 
 function fechaISOaDMY(iso){
@@ -639,6 +645,38 @@ function marcarFiltroLimpio(id){
   saveEquipos(state.equipos);
   showToast("Filtro marcado como limpio");
   render();
+}
+
+/* ---------- Imágenes: leer, redimensionar y comprimir (para perfil/negocio) ---------- */
+function resizeImage(file, maxSize){
+  maxSize = maxSize || 500;
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if(width > height && width > maxSize){ height = height * maxSize / width; width = maxSize; }
+        else if(height > maxSize){ width = width * maxSize / height; height = maxSize; }
+        const canvas = document.createElement("canvas");
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function manejarFotoInput(inputEl, maxSize, callback){
+  const file = inputEl.files && inputEl.files[0];
+  if(!file) return;
+  resizeImage(file, maxSize).then(callback).catch(()=>showToast("No se pudo cargar la imagen"));
+  inputEl.value = "";
 }
 
 function limpiarTelefono(tel){
@@ -830,6 +868,70 @@ function screenLogin(){
         </div>
       </div>
     </div>`;
+}
+
+function screenBienvenida(){
+  const p = state.perfil;
+  return `
+    <div class="screen">
+      <div class="scroll" style="padding-top:36px; padding-bottom:30px;">
+        <div style="text-align:center;">
+          <div style="font-weight:800; font-size:21px; color:var(--primary-deep);">¡Bienvenido/a a AiresCare!</div>
+          <div style="font-size:13px; color:var(--ink-soft); margin-top:8px; line-height:1.5; max-width:300px; margin-left:auto; margin-right:auto;">
+            Cuéntanos un poco de ti y de tu negocio para personalizar la app.
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:center; gap:26px; margin-top:28px;">
+          <div style="text-align:center;">
+            <button onclick="document.getElementById('bv-foto-input').click()" style="width:84px; height:84px; border-radius:999px; border:2px dashed var(--line); background:var(--chip-bg); display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:pointer; padding:0;">
+              ${p.foto ? `<img src="${p.foto}" style="width:100%; height:100%; object-fit:cover;" alt="" />` : svg('user',28,'var(--primary)')}
+            </button>
+            <input type="file" id="bv-foto-input" accept="image/*" style="display:none;" onchange="manejarFotoInput(this, 400, (url)=>{ state.perfil.foto = url; render(); })" />
+            <div style="font-size:11px; color:var(--ink-soft); margin-top:6px;">Tu foto</div>
+          </div>
+          <div style="text-align:center;">
+            <button onclick="document.getElementById('bv-logo-input').click()" style="width:84px; height:84px; border-radius:20px; border:2px dashed var(--line); background:var(--chip-bg); display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:pointer; padding:0;">
+              ${p.negocioLogo ? `<img src="${p.negocioLogo}" style="width:100%; height:100%; object-fit:cover;" alt="" />` : svg('ac',28,'var(--primary)')}
+            </button>
+            <input type="file" id="bv-logo-input" accept="image/*" style="display:none;" onchange="manejarFotoInput(this, 400, (url)=>{ state.perfil.negocioLogo = url; render(); })" />
+            <div style="font-size:11px; color:var(--ink-soft); margin-top:6px;">Logo del negocio</div>
+          </div>
+        </div>
+
+        <div style="margin-top:26px;">
+          <label class="field-label" style="margin-top:0;">Tu nombre</label>
+          <input class="field-input" id="bv-nombre" type="text" value="${p.nombre||""}" placeholder="Ej: Fernando Tapia" />
+
+          <label class="field-label">Nombre del negocio</label>
+          <input class="field-input" id="bv-negocio" type="text" value="${p.negocioNombre||""}" placeholder="Ej: AiresCare Mantenimientos" />
+
+          <label class="field-label">Teléfono (opcional)</label>
+          <input class="field-input" id="bv-telefono" type="tel" value="${p.telefono||""}" placeholder="Tu número" />
+        </div>
+
+        <button class="btn-primary" style="margin-top:24px;" onclick="guardarBienvenida()">GUARDAR Y CONTINUAR</button>
+        <button onclick="omitirBienvenida()" style="width:100%; background:none; border:none; margin-top:14px; padding:6px; text-align:center; font-size:12.5px; color:var(--ink-soft); cursor:pointer;">Omitir por ahora</button>
+      </div>
+    </div>`;
+}
+
+function guardarBienvenida(){
+  const nombre = document.getElementById("bv-nombre").value.trim();
+  const negocioNombre = document.getElementById("bv-negocio").value.trim();
+  const telefono = document.getElementById("bv-telefono").value.trim();
+  state.perfil.nombre = nombre;
+  state.perfil.negocioNombre = negocioNombre;
+  state.perfil.telefono = telefono;
+  savePerfil(state.perfil);
+  state.onboardingOmitido = true;
+  showToast("¡Listo! Ya puedes empezar.");
+  go("home", true);
+}
+
+function omitirBienvenida(){
+  state.onboardingOmitido = true;
+  go("home", true);
 }
 
 function screenHome(){
@@ -1831,8 +1933,9 @@ function datosComprobante(){
 }
 
 function textoComprobante(eq, h){
+  const negocioNombre = state.perfil.negocioNombre || "AiresCare";
   const lineas = [
-    `AiresCare · Comprobante de servicio`,
+    `${negocioNombre} · Comprobante de servicio`,
     ``,
     `Cliente: ${eq.cliente || "-"}`,
     `Equipo: ${eq.nombre}${eq.marca && eq.marca!=='Sin especificar' ? ' - '+eq.marca : ''}`,
@@ -1865,16 +1968,25 @@ function descargarComprobantePDF(){
   const azul = [14,99,176];
   const gris = [91,122,147];
   const tinta = [11,42,69];
+  const negocioNombre = state.perfil.negocioNombre || "AiresCare";
+  const negocioLogo = state.perfil.negocioLogo;
 
   doc.setFillColor(...azul);
   doc.rect(0,0,595,90,"F");
+  let textX = 40;
+  if(negocioLogo){
+    try{
+      doc.addImage(negocioLogo, "JPEG", 40, 20, 50, 50);
+      textX = 104;
+    }catch(e){}
+  }
   doc.setTextColor(255,255,255);
   doc.setFontSize(20);
   doc.setFont("helvetica","bold");
-  doc.text("AiresCare", 40, 45);
+  doc.text(negocioNombre, textX, 45);
   doc.setFontSize(11);
   doc.setFont("helvetica","normal");
-  doc.text("Comprobante de servicio de mantenimiento", 40, 65);
+  doc.text("Comprobante de servicio de mantenimiento", textX, 65);
 
   let y = 130;
   doc.setTextColor(...tinta);
@@ -1920,7 +2032,7 @@ function descargarComprobantePDF(){
   y += 25;
   doc.setFontSize(10);
   doc.setTextColor(...gris);
-  doc.text("¡Gracias por confiar en AiresCare para el mantenimiento de tus equipos!", 40, y);
+  doc.text(`¡Gracias por confiar en ${negocioNombre} para el mantenimiento de tus equipos!`, 40, y);
 
   const nombreArchivo = `comprobante-${(eq.cliente||eq.nombre).replace(/\s+/g,'_')}-${h.fecha.replace(/\//g,'-')}.pdf`;
   doc.save(nombreArchivo);
@@ -1944,9 +2056,12 @@ function screenComprobante(){
       ${topBar("Comprobante","historial")}
       <div class="scroll">
         <div class="card" style="padding:0; overflow:hidden;">
-          <div style="background:linear-gradient(135deg, var(--primary-deep), var(--primary)); padding:20px; color:#fff;">
-            <div style="font-weight:800; font-size:17px;">AiresCare</div>
-            <div style="font-size:12px; opacity:0.9; margin-top:2px;">Comprobante de servicio de mantenimiento</div>
+          <div style="background:linear-gradient(135deg, var(--primary-deep), var(--primary)); padding:20px; color:#fff; display:flex; align-items:center; gap:12px;">
+            ${state.perfil.negocioLogo ? `<img src="${state.perfil.negocioLogo}" width="40" height="40" style="border-radius:10px; object-fit:cover; flex-shrink:0;" alt="" />` : ""}
+            <div>
+              <div style="font-weight:800; font-size:17px;">${state.perfil.negocioNombre || "AiresCare"}</div>
+              <div style="font-size:12px; opacity:0.9; margin-top:2px;">Comprobante de servicio de mantenimiento</div>
+            </div>
           </div>
           <div style="padding:18px;">
             <div style="font-weight:700; font-size:15px;">${eq.cliente || "Cliente sin nombre"}</div>
@@ -2078,9 +2193,9 @@ function screenPerfil(){
         <div style="margin-top:22px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Cuenta</div>
         <div class="card" style="margin-top:8px;">
           <div style="display:flex; align-items:center; gap:12px;">
-            ${state.usuario.foto ? `<img src="${state.usuario.foto}" width="44" height="44" style="border-radius:999px;" alt="" />` : `<div style="width:44px;height:44px;border-radius:999px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center;">${svg('user',22,'#0E63B0')}</div>`}
+            ${(p.foto || state.usuario.foto) ? `<img src="${p.foto || state.usuario.foto}" width="44" height="44" style="border-radius:999px; object-fit:cover;" alt="" />` : `<div style="width:44px;height:44px;border-radius:999px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center;">${svg('user',22,'#0E63B0')}</div>`}
             <div>
-              <div style="font-weight:700; font-size:14px;">${state.usuario.nombre || "Tu cuenta"}</div>
+              <div style="font-weight:700; font-size:14px;">${p.negocioNombre || state.usuario.nombre || "Tu cuenta"}</div>
               <div style="font-size:12px; color:var(--ink-soft);">${state.usuario.correo}</div>
             </div>
           </div>
@@ -2096,8 +2211,28 @@ function screenPerfil(){
 
         <div style="margin-top:22px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Datos personales</div>
         <div class="card" style="margin-top:8px;">
-          <label class="field-label" style="margin-top:0;">Nombre</label>
+          <div style="display:flex; justify-content:center; gap:22px; margin-bottom:6px;">
+            <div style="text-align:center;">
+              <button onclick="document.getElementById('pf-foto-input').click()" style="width:66px; height:66px; border-radius:999px; border:2px dashed var(--line); background:var(--chip-bg); display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:pointer; padding:0;">
+                ${p.foto ? `<img src="${p.foto}" style="width:100%; height:100%; object-fit:cover;" alt="" />` : svg('user',22,'var(--primary)')}
+              </button>
+              <input type="file" id="pf-foto-input" accept="image/*" style="display:none;" onchange="manejarFotoInput(this, 400, (url)=>{ state.perfil.foto = url; savePerfil(state.perfil); render(); })" />
+              <div style="font-size:10.5px; color:var(--ink-soft); margin-top:4px;">Tu foto</div>
+            </div>
+            <div style="text-align:center;">
+              <button onclick="document.getElementById('pf-logo-input').click()" style="width:66px; height:66px; border-radius:16px; border:2px dashed var(--line); background:var(--chip-bg); display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:pointer; padding:0;">
+                ${p.negocioLogo ? `<img src="${p.negocioLogo}" style="width:100%; height:100%; object-fit:cover;" alt="" />` : svg('ac',22,'var(--primary)')}
+              </button>
+              <input type="file" id="pf-logo-input" accept="image/*" style="display:none;" onchange="manejarFotoInput(this, 400, (url)=>{ state.perfil.negocioLogo = url; savePerfil(state.perfil); render(); })" />
+              <div style="font-size:10.5px; color:var(--ink-soft); margin-top:4px;">Logo del negocio</div>
+            </div>
+          </div>
+
+          <label class="field-label">Nombre</label>
           <input class="field-input" id="pf-nombre" type="text" value="${p.nombre||""}" placeholder="Tu nombre" />
+
+          <label class="field-label">Nombre del negocio</label>
+          <input class="field-input" id="pf-negocio" type="text" value="${p.negocioNombre||""}" placeholder="Ej: AiresCare Mantenimientos" />
 
           <label class="field-label">Correo (opcional)</label>
           <input class="field-input" id="pf-correo" type="email" value="${p.correo||""}" placeholder="tu@correo.com" />
@@ -2156,9 +2291,10 @@ function borrarTodo(){
 
 function guardarPerfil(){
   const nombre = document.getElementById("pf-nombre").value.trim();
+  const negocioNombre = document.getElementById("pf-negocio").value.trim();
   const correo = document.getElementById("pf-correo").value.trim();
   const telefono = document.getElementById("pf-telefono").value.trim();
-  state.perfil = { nombre, correo, telefono };
+  state.perfil = { ...state.perfil, nombre, negocioNombre, correo, telefono };
   savePerfil(state.perfil);
   showToast("Datos guardados");
   render();
@@ -2169,6 +2305,7 @@ function render(){
   const map = {
     cargando: screenCargando,
     login: screenLogin,
+    bienvenida: screenBienvenida,
     home: screenHome,
     equipos: screenEquipos,
     detalle: screenDetalle,
@@ -2211,7 +2348,7 @@ function updateSidebarActive(){
     btn.classList.toggle("active", btn.getAttribute("data-screen")===group);
   });
 
-  const esPantallaAuth = state.screen === "cargando" || state.screen === "login";
+  const esPantallaAuth = state.screen === "cargando" || state.screen === "login" || state.screen === "bienvenida";
   const mobileTop = document.getElementById("mobileTopbar");
   const sidebarEl = document.getElementById("sidebar");
   if(mobileTop) mobileTop.style.display = esPantallaAuth ? "none" : "";
