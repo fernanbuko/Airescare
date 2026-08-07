@@ -20,6 +20,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="AiresCare" />
@@ -530,10 +531,15 @@ async function alternarBloqueoUsuario(uid, bloquear){
 
 let db = null;
 let auth = null;
+let messaging = null;
+const VAPID_KEY = "BC5OHxGW471nz014ViU9miHHxdc3m2dKDpLCMGGAAcan27xQs0_eYxspXR2GL7ay34KDPISIxbLK7svN52Olyac";
 try{
   firebase.initializeApp(firebaseConfig);
   db = firebase.firestore();
   auth = firebase.auth();
+  if(firebase.messaging && firebase.messaging.isSupported && firebase.messaging.isSupported()){
+    messaging = firebase.messaging();
+  }
 }catch(e){
   console.error("No se pudo inicializar Firebase:", e);
 }
@@ -630,6 +636,7 @@ if(auth){
       state.usuario = { uid: user.uid, nombre: user.displayName || "", correo: user.email || "", foto: user.photoURL || "" };
       const necesitaOnboarding = await sincronizarDesdeNube();
       if(!state.usuario) return; // se detectó bloqueo durante la sincronización
+      if(notificacionesSoportadas() && Notification.permission === "granted") registrarTokenFCM();
       if(necesitaOnboarding) go("bienvenida", true);
       else if(state.screen === "login" || state.screen === "cargando") go("home", true);
       else render();
@@ -2636,11 +2643,29 @@ function pedirPermisoNotificaciones(){
     if(perm==="granted"){
       showToast("Notificaciones activadas");
       revisarMantenimientosProximos(true);
+      registrarTokenFCM();
     } else if(perm==="denied"){
       showToast("Notificaciones bloqueadas por el navegador");
     }
     render();
   });
+}
+
+async function registrarTokenFCM(){
+  if(!messaging || !state.usuario || Notification.permission !== "granted") return;
+  try{
+    const registration = await navigator.serviceWorker.ready;
+    const token = await messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
+    if(token){
+      await db.collection("usuarios").doc(state.usuario.uid).collection("tokens").doc(token).set({
+        token,
+        creado: firebase.firestore.FieldValue.serverTimestamp(),
+        userAgent: navigator.userAgent
+      });
+    }
+  }catch(e){
+    console.error("No se pudo registrar el token de notificaciones push:", e);
+  }
 }
 
 function enviarNotificacion(title, body, tagKey){

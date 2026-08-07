@@ -1,4 +1,4 @@
-const CACHE_NAME = "airescare-cache-v24";
+const CACHE_NAME = "airescare-cache-v18";
 const ASSETS = [
   "./",
   "./index.html",
@@ -12,6 +12,31 @@ const ASSETS = [
   "./ac-hero.png",
   "./ac-unit.png"
 ];
+
+// --- Firebase Cloud Messaging: recibir notificaciones push en segundo plano ---
+importScripts("https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js");
+
+firebase.initializeApp({
+  apiKey: "AIzaSyClrv-TpgdZCdFVGYvBGSjEeBEXoxCM5_U",
+  authDomain: "airescare-20bf4.firebaseapp.com",
+  projectId: "airescare-20bf4",
+  storageBucket: "airescare-20bf4.firebasestorage.app",
+  messagingSenderId: "441921693356",
+  appId: "1:441921693356:web:b1f8584ea98b729b3ce109"
+});
+
+const messaging = firebase.messaging();
+messaging.onBackgroundMessage((payload) => {
+  const titulo = (payload.notification && payload.notification.title) || "AiresCare";
+  const opciones = {
+    body: (payload.notification && payload.notification.body) || "",
+    icon: "icon-192.png",
+    badge: "icon-192.png",
+    tag: (payload.data && payload.data.tag) || undefined
+  };
+  self.registration.showNotification(titulo, opciones);
+});
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
