@@ -112,7 +112,7 @@ async function main() {
             avisos.push({
               eq,
               clave: `${eq.id}_${iso}_${eq.hora}_30min`,
-              titulo: `En 30 minutos: mantenimiento de ${eq.nombre}`,
+              titulo: `Tienes un mantenimiento en 30 minutos: ${eq.nombre}`,
             });
           }
         }
