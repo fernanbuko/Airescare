@@ -332,6 +332,7 @@
 <div class="confirm-overlay" id="confirmOverlay">
   <div class="confirm-box">
     <p id="confirmMessage"></p>
+    <input class="field-input" id="confirmTextInput" type="text" style="display:none;" placeholder="" />
     <div class="confirm-actions">
       <button class="confirm-cancel" id="confirmCancelBtn">Cancelar</button>
       <button class="confirm-accept" id="confirmAcceptBtn">Eliminar</button>
@@ -489,54 +490,114 @@ function manejarBloqueo(){
   if(auth) auth.signOut();
 }
 
-/* ---------- Panel de administración: listar y bloquear usuarios ---------- */
-async function cargarUsuariosAdmin(){
-  if(!db || !esAdmin()) return;
+/* ---------- Panel de administración: solicitudes que ejecuta el robot ---------- */
+const ADMIN_UID_PANEL = ADMIN_UIDS[0];
+let unsubscribePanelAdmin = null;
+
+function docAdmin(nombreDoc){
+  return db.collection("usuarios").doc(ADMIN_UID_PANEL).collection("admin").doc(nombreDoc);
+}
+
+function escucharPanelAdmin(){
+  if(!db || !esAdmin() || unsubscribePanelAdmin) return;
   state.adminUsuariosCargando = true;
   render();
-  try{
-    const snap = await db.collection("usuarios").get();
-    state.adminUsuarios = snap.docs
-      .map(d=>({ uid: d.id, ...d.data() }))
-      .sort((a,b)=>{
-        const ta = a.actualizado && a.actualizado.toMillis ? a.actualizado.toMillis() : 0;
-        const tb = b.actualizado && b.actualizado.toMillis ? b.actualizado.toMillis() : 0;
-        return tb - ta;
-      });
-  }catch(e){
-    console.error("Error cargando usuarios:", e);
-    showToast("No se pudo cargar la lista. Revisa las reglas de Firestore.");
-    state.adminUsuarios = state.adminUsuarios || [];
-  }
-  state.adminUsuariosCargando = false;
-  render();
+  unsubscribePanelAdmin = docAdmin("panel").onSnapshot(
+    (doc)=>{
+      state.adminPanel = doc.exists ? doc.data() : null;
+      state.adminUsuariosCargando = false;
+      if(state.screen === "adminPanel") render();
+    },
+    (e)=>{
+      console.error("Error escuchando el panel de administración:", e);
+      state.adminUsuariosCargando = false;
+      if(state.screen === "adminPanel") render();
+    }
+  );
 }
 
 function abrirPanelAdmin(){
   go("adminPanel");
-  cargarUsuariosAdmin();
+  escucharPanelAdmin();
 }
 
-function confirmarBloqueo(uid, nombre){
-  showConfirm(`¿Bloquear a ${nombre || "este usuario"}? No va a poder volver a entrar hasta que lo desbloquees.`, ()=>{
-    alternarBloqueoUsuario(uid, true);
-  }, "Bloquear");
-}
-
-async function alternarBloqueoUsuario(uid, bloquear){
+async function solicitarBloqueo(uid, nombre, bloquear){
   if(!db) return;
   if(state.usuario && uid === state.usuario.uid){ showToast("No podés bloquearte a vos mismo"); return; }
   try{
-    await db.collection("usuarios").doc(uid).set({ bloqueado: bloquear }, { merge: true });
-    showToast(bloquear ? "Usuario bloqueado" : "Usuario desbloqueado");
-    const u = (state.adminUsuarios||[]).find(x=>x.uid===uid);
-    if(u) u.bloqueado = bloquear;
+    const ref = docAdmin("solicitudesBloqueo");
+    const doc = await ref.get();
+    const actuales = doc.exists ? (doc.data().value || []) : [];
+    const nuevas = [...actuales.filter(s=>s.uid!==uid), { uid, nombre, bloquear }];
+    await ref.set({ value: nuevas });
+    state.adminBloqueosSolicitados = state.adminBloqueosSolicitados || {};
+    state.adminBloqueosSolicitados[uid] = bloquear;
+    showToast(bloquear ? "Se va a bloquear en la próxima corrida del robot" : "Se va a desbloquear en la próxima corrida del robot");
     render();
   }catch(e){
-    console.error("Error actualizando bloqueo:", e);
-    showToast("No se pudo actualizar. Revisa las reglas de Firestore.");
+    console.error("Error solicitando bloqueo:", e);
+    showToast("No se pudo guardar la solicitud");
   }
 }
+
+function confirmarBloqueo(uid, nombre, bloquear){
+  const mensaje = bloquear
+    ? `"${nombre || "Esta cuenta"}" ya no va a poder iniciar sesión hasta que la desbloquees. Sus datos no se tocan. ¿Continuar?`
+    : `"${nombre || "Esta cuenta"}" va a poder volver a iniciar sesión normalmente. ¿Continuar?`;
+  showConfirm(mensaje, ()=>solicitarBloqueo(uid, nombre, bloquear), bloquear ? "Sí, bloquear" : "Sí, desbloquear", bloquear ? "danger" : "primary");
+}
+
+function confirmarEliminacionCuenta(uid, nombre){
+  showConfirm(
+    `Esto va a ELIMINAR PERMANENTEMENTE la cuenta de "${nombre || "esta cuenta"}" — todos sus equipos, historial, y su acceso de inicio de sesión. No se puede deshacer. Para confirmar, escribe ELIMINAR:`,
+    ()=>solicitarEliminacion(uid, nombre),
+    "Eliminar definitivamente",
+    "danger",
+    "ELIMINAR"
+  );
+}
+
+async function solicitarEliminacion(uid, nombre){
+  if(!db) return;
+  if(state.usuario && uid === state.usuario.uid){ showToast("No podés eliminarte a vos mismo desde aquí"); return; }
+  try{
+    const ref = docAdmin("solicitudesEliminacion");
+    const doc = await ref.get();
+    const actuales = doc.exists ? (doc.data().value || []) : [];
+    const nuevas = [...actuales.filter(s=>s.uid!==uid), { uid, nombre, solicitadoEn: Date.now() }];
+    await ref.set({ value: nuevas });
+    state.adminEliminacionesSolicitadas = state.adminEliminacionesSolicitadas || [];
+    state.adminEliminacionesSolicitadas.push(uid);
+    showToast("Se va a eliminar en la próxima corrida del robot");
+    render();
+  }catch(e){
+    console.error("Error solicitando eliminación:", e);
+    showToast("No se pudo guardar la solicitud");
+  }
+}
+
+async function registrarUltimaConexion(){
+  if(!db || !state.usuario) return;
+  try{
+    await db.collection("usuarios").doc(state.usuario.uid).collection("meta").doc("conexion").set({
+      ultima: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  }catch(e){
+    console.error("No se pudo registrar la última conexión:", e);
+  }
+}
+
+function tiempoRelativoMs(ms){
+  if(!ms) return null;
+  const diffMin = Math.round((Date.now() - ms) / 60000);
+  if(diffMin < 1) return "ahora";
+  if(diffMin < 60) return `hace ${diffMin} min`;
+  const diffH = Math.round(diffMin/60);
+  if(diffH < 24) return `hace ${diffH} h`;
+  const diffD = Math.round(diffH/24);
+  return `hace ${diffD} día${diffD===1?'':'s'}`;
+}
+
 
 let db = null;
 let auth = null;
@@ -647,6 +708,7 @@ if(auth){
       if(!state.usuario) return; // se detectó bloqueo durante la sincronización
       if(notificacionesSoportadas() && Notification.permission === "granted") registrarTokenFCM();
       cargarNotificaciones();
+      registrarUltimaConexion();
       if(necesitaOnboarding) go("bienvenida", true);
       else if(state.screen === "login" || state.screen === "cargando") go("home", true);
       else render();
@@ -697,8 +759,10 @@ let state = {
   comprobanteHistorialId: null,
   usuario: null,
   onboardingOmitido: false,
-  adminUsuarios: [],
+  adminPanel: null,
   adminUsuariosCargando: false,
+  adminBloqueosSolicitados: {},
+  adminEliminacionesSolicitadas: [],
   notificaciones: [],
   notifNoLeidas: 0
 };
@@ -915,20 +979,45 @@ function showToast(msg){
   showToast._t = setTimeout(()=>t.classList.remove("show"), 2200);
 }
 
-function showConfirm(message, onAccept, acceptLabel, acceptStyle){
+function showConfirm(message, onAccept, acceptLabel, acceptStyle, requiereTexto){
   const overlay = document.getElementById("confirmOverlay");
   document.getElementById("confirmMessage").textContent = message;
   overlay.classList.add("show");
 
   const acceptBtn = document.getElementById("confirmAcceptBtn");
   const cancelBtn = document.getElementById("confirmCancelBtn");
+  const textInput = document.getElementById("confirmTextInput");
   acceptBtn.textContent = acceptLabel || "Eliminar";
   acceptBtn.style.background = acceptStyle === "primary" ? "var(--primary)" : "#D64545";
+
+  let onInputHandler = null;
+  if(requiereTexto){
+    textInput.style.display = "block";
+    textInput.value = "";
+    textInput.placeholder = requiereTexto;
+    acceptBtn.disabled = true;
+    acceptBtn.style.opacity = "0.5";
+    onInputHandler = () => {
+      const listo = textInput.value.trim() === requiereTexto;
+      acceptBtn.disabled = !listo;
+      acceptBtn.style.opacity = listo ? "1" : "0.5";
+    };
+    textInput.addEventListener("input", onInputHandler);
+  } else {
+    textInput.style.display = "none";
+    acceptBtn.disabled = false;
+    acceptBtn.style.opacity = "1";
+  }
 
   const cleanup = () => {
     overlay.classList.remove("show");
     acceptBtn.onclick = null;
     cancelBtn.onclick = null;
+    acceptBtn.disabled = false;
+    acceptBtn.style.opacity = "1";
+    if(onInputHandler) textInput.removeEventListener("input", onInputHandler);
+    textInput.style.display = "none";
+    textInput.value = "";
   };
   acceptBtn.onclick = () => { cleanup(); onAccept(); };
   cancelBtn.onclick = () => { cleanup(); };
@@ -1021,42 +1110,81 @@ function screenAdminPanel(){
         ${bottomNav("perfil")}
       </div>`;
   }
-  const usuarios = state.adminUsuarios || [];
+
   const cargando = state.adminUsuariosCargando;
+  const panel = state.adminPanel;
+  const bloqueosSolicitados = state.adminBloqueosSolicitados || {};
+  const eliminacionesSolicitadas = state.adminEliminacionesSolicitadas || [];
+
+  let contenido;
+  if(cargando && !panel){
+    contenido = `<div style="text-align:center; padding:40px; color:var(--ink-soft); font-size:13px;">Cargando...</div>`;
+  } else if(!panel){
+    contenido = `
+      <div style="display:flex; flex-direction:column; align-items:center; text-align:center; padding-top:50px;">
+        ${svg('lock',36,'var(--ink-soft)')}
+        <div style="font-weight:700; font-size:14.5px; margin-top:14px;">Todavía no hay datos</div>
+        <div style="font-size:12.5px; color:var(--ink-soft); margin-top:6px; max-width:260px;">
+          El robot arma este resumen automáticamente en su próxima corrida (cada 30 min) — vuelve a entrar en un rato.
+        </div>
+      </div>`;
+  } else {
+    const cuentas = panel.cuentas || [];
+    contenido = `
+      <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:14px;">
+        Actualizado: ${panel.actualizadoEn ? new Date(panel.actualizadoEn).toLocaleString() : "—"}
+      </div>
+      <div style="display:flex; gap:10px; margin-bottom:20px;">
+        <div class="card" style="flex:1; text-align:center; padding:14px 8px;">
+          <div style="font-size:19px; font-weight:800; color:var(--primary);">${panel.totalCuentas || 0}</div>
+          <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">Cuentas</div>
+        </div>
+        <div class="card" style="flex:1; text-align:center; padding:14px 8px;">
+          <div style="font-size:19px; font-weight:800; color:var(--primary);">${panel.totalEquipos || 0}</div>
+          <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">Equipos</div>
+        </div>
+      </div>
+      <div style="font-weight:800; font-size:14.5px; margin-bottom:10px;">Cuentas registradas</div>
+      ${cuentas.length === 0 ? `<div class="card" style="text-align:center; color:var(--ink-soft); font-size:13px; padding:24px;">Sin cuentas todavía.</div>` : cuentas.map(c=>{
+        const bloqueadoEfectivo = bloqueosSolicitados[c.uid] !== undefined ? bloqueosSolicitados[c.uid] : c.bloqueado;
+        const hayBloqueoPendiente = bloqueosSolicitados[c.uid] !== undefined;
+        const hayEliminacionPendiente = eliminacionesSolicitadas.includes(c.uid);
+        const nombreMostrado = c.negocioNombre || c.nombre || c.correo || "Sin nombre";
+        const nombreEscape = nombreMostrado.replace(/'/g,"");
+        const referencia = c.ultimaConexion || c.fechaRegistro;
+        const diasSinActividad = referencia ? (Date.now() - referencia) / 86400000 : null;
+        const inactiva = diasSinActividad !== null && diasSinActividad >= 30;
+        return `
+        <div class="card" style="margin-bottom:10px; display:flex; gap:12px; align-items:flex-start;">
+          ${c.logo ? `<img src="${c.logo}" width="42" height="42" style="border-radius:999px; object-fit:cover; flex-shrink:0;" alt="" />` : `<div style="width:42px;height:42px;border-radius:999px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center; flex-shrink:0;">${svg('ac',20,'var(--primary)')}</div>`}
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:700; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${nombreMostrado}</div>
+            ${c.nombre && c.negocioNombre ? `<div style="font-size:11.5px; color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${c.nombre}</div>` : ""}
+            ${c.correo ? `<div style="font-size:11.5px; color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${c.correo}</div>` : ""}
+            <div style="font-size:10.5px; color:var(--ink-soft); margin-top:4px;">
+              ${c.fechaRegistro ? new Date(c.fechaRegistro).toLocaleDateString() : "Fecha de registro no disponible"}${c.fechaRegistro ? ` (${tiempoRelativoMs(c.fechaRegistro)})` : ""}
+            </div>
+            <div style="font-size:10.5px; margin-top:2px; color:${inactiva ? 'var(--warn)' : 'var(--mint)'};">
+              ${inactiva ? "⚠ " : "● "}Última conexión: ${c.ultimaConexion ? tiempoRelativoMs(c.ultimaConexion) : "No disponible"}${inactiva ? " — contactar" : ""}
+            </div>
+            <div style="font-size:10.5px; color:var(--ink-soft); margin-top:2px;">🔧 ${c.equipos || 0} equipo${c.equipos===1?'':'s'}</div>
+            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:8px;">
+              ${hayBloqueoPendiente
+                ? `<span style="font-size:11px; color:var(--warn); font-weight:700;">⏳ Se va a ${bloqueadoEfectivo ? "bloquear" : "desbloquear"} en la próxima corrida</span>`
+                : `<button onclick="confirmarBloqueo('${c.uid}','${nombreEscape}', ${!bloqueadoEfectivo})" style="background:none; border:none; padding:0; font-size:11px; font-weight:700; cursor:pointer; color:${bloqueadoEfectivo ? 'var(--mint)' : 'var(--warn)'};">${bloqueadoEfectivo ? "🔓 Desbloquear acceso" : "🔒 Bloquear acceso"}</button>`}
+              ${hayEliminacionPendiente
+                ? `<span style="font-size:11px; color:var(--warn); font-weight:700;">⏳ Se va a eliminar en la próxima corrida</span>`
+                : `<button onclick="confirmarEliminacionCuenta('${c.uid}','${nombreEscape}')" style="background:none; border:none; padding:0; font-size:11px; font-weight:700; cursor:pointer; color:#D64545;">🗑 Eliminar cuenta</button>`}
+            </div>
+          </div>
+        </div>`;
+      }).join("")}`;
+  }
+
   return `
     <div class="screen">
-      ${topBar("Usuarios","perfil", `<button class="iconbtn" onclick="cargarUsuariosAdmin()" ${cargando?'disabled':''}>${svg('refresh',19,'var(--ink)')}</button>`)}
-      <div class="scroll">
-        <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:14px;">
-          ${cargando ? "Cargando..." : `${usuarios.length} usuario${usuarios.length===1?'':'s'} registrado${usuarios.length===1?'':'s'} en total.`}
-        </div>
-        ${cargando ? `<div style="text-align:center; padding:30px; color:var(--ink-soft); font-size:13px;">Cargando usuarios...</div>` : ""}
-        ${(!cargando && usuarios.length===0) ? `<div class="card" style="text-align:center; color:var(--ink-soft); font-size:13px; padding:24px;">No hay usuarios registrados todavía.</div>` : ""}
-        ${usuarios.map(u=>{
-          const esYo = state.usuario && u.uid === state.usuario.uid;
-          const bloqueado = u.bloqueado === true;
-          let ultima = "Sin datos";
-          if(u.actualizado && typeof u.actualizado.toDate === "function"){
-            const d = u.actualizado.toDate();
-            ultima = d.toLocaleDateString() + " " + d.toLocaleTimeString().slice(0,5);
-          }
-          const nombreEscape = (u.nombre || u.correo || "").replace(/'/g,"");
-          return `
-          <div class="card" style="margin-top:10px; display:flex; gap:12px; align-items:center;">
-            ${u.foto ? `<img src="${u.foto}" width="42" height="42" style="border-radius:999px; object-fit:cover; flex-shrink:0;" alt="" />` : `<div style="width:42px;height:42px;border-radius:999px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center; flex-shrink:0;">${svg('user',20,'var(--primary)')}</div>`}
-            <div style="flex:1; min-width:0;">
-              <div style="font-weight:700; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${u.nombre || "Sin nombre"}${esYo ? " (vos)" : ""}</div>
-              <div style="font-size:11.5px; color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${u.correo || u.uid}</div>
-              <div style="font-size:10.5px; color:var(--ink-soft); margin-top:2px;">Última conexión: ${ultima}</div>
-              ${bloqueado ? `<span class="chip chip-warn" style="margin-top:4px;">Bloqueado</span>` : ""}
-            </div>
-            ${!esYo ? `
-            <button class="btn-outline" style="width:auto; flex-shrink:0; padding:8px 12px; font-size:11.5px; ${bloqueado ? '' : 'border-color:#D64545; color:#D64545;'}" onclick="${bloqueado ? `alternarBloqueoUsuario('${u.uid}', false)` : `confirmarBloqueo('${u.uid}','${nombreEscape}')`}">
-              ${bloqueado ? "Desbloquear" : "Bloquear"}
-            </button>` : ""}
-          </div>`;
-        }).join("")}
-      </div>
+      ${topBar("Administración","perfil")}
+      <div class="scroll">${contenido}</div>
       ${bottomNav("perfil")}
     </div>`;
 }
