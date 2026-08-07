@@ -2154,12 +2154,13 @@ function screenPerfil(){
       ${topBar("Perfil","home")}
       <div class="scroll">
         <div style="display:flex; align-items:center; gap:14px;">
+          ${(p.foto || state.usuario.foto) ? `<img src="${p.foto || state.usuario.foto}" width="56" height="56" style="border-radius:999px; object-fit:cover;" alt="" />` : `
           <div style="width:56px;height:56px;border-radius:999px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center;">
             ${inicial ? `<span style="font-size:20px; font-weight:800; color:var(--primary);">${inicial}</span>` : svg('user',26,'var(--primary)')}
-          </div>
+          </div>`}
           <div>
-            <div style="font-weight:800; font-size:16px;">${p.nombre || "Mi cuenta"}</div>
-            <div style="font-size:12.5px; color:var(--ink-soft);">${p.correo || "Administra tus equipos y preferencias"}</div>
+            <div style="font-weight:800; font-size:16px;">${p.negocioNombre || p.nombre || state.usuario.nombre || "Mi cuenta"}</div>
+            <div style="font-size:12.5px; color:var(--ink-soft);">${p.correo || state.usuario.correo || "Administra tus equipos y preferencias"}</div>
           </div>
         </div>
 
