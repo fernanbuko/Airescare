@@ -176,8 +176,10 @@ async function main() {
         try {
           await admin.messaging().sendEachForMulticast({
             tokens,
-            notification: { title: titulo, body: cuerpo },
-            data: { tag: clave, url: "./" },
+            // Solo "data" (sin "notification"): asi el navegador NO la muestra
+            // el solo, y evitamos que salga duplicada junto con la que
+            // mostramos nosotros mismos en sw.js.
+            data: { title: titulo, body: cuerpo, tag: clave, url: "./" },
           });
           console.log(`Push enviado a ${uid}: ${titulo}`);
         } catch (e) {
