@@ -72,6 +72,13 @@
   }
   #shell{ display:flex; min-height:100vh; min-height:100dvh; }
   #sidebar{ display:none; }
+  #offlineBanner{
+    display:none; position:fixed; top:0; left:0; right:0; z-index:80;
+    background:var(--warn); color:#fff; font-size:12px; font-weight:700;
+    text-align:center; padding:8px 12px; box-sizing:border-box;
+  }
+  body.offline #offlineBanner{ display:block; }
+  body.offline #mobileTopbar{ top:32px; }
   #mobileTopbar{
     position:fixed; top:0; left:0; right:0; z-index:50;
     max-width:480px; margin:0 auto;
@@ -86,7 +93,7 @@
   #mobileTopbarHome img{ border-radius:7px; display:block; }
   #mobileTopbarHome span{ font-weight:800; font-size:15px; color:var(--primary-deep); }
   #mobileTopbarRight{ display:flex; align-items:center; gap:12px; flex-shrink:0; }
-  #mobileTopbarBell{
+  #mobileTopbarBell, #mobileTopbarAdmin{
     background:none; border:none; display:flex; align-items:center; justify-content:center;
     padding:0; margin:0; cursor:pointer; color:var(--ink);
   }
@@ -113,6 +120,7 @@
     flex:1;
     padding-top: calc(46px + env(safe-area-inset-top,10px));
   }
+  body.offline #app{ padding-top: calc(78px + env(safe-area-inset-top,10px)); }
 
   /* ---------- Diseño de escritorio ---------- */
   @media (min-width: 900px){
@@ -156,6 +164,8 @@
       border-radius:0;
       padding-top:64px;
     }
+    body.offline #app{ padding-top:96px; }
+    body.offline #sidebar{ padding-top:60px; }
     #mobileTopbar{ display:none; }
     .screen{ max-width:900px; margin:0 auto; width:100%; }
     .scroll{ padding-left:40px; padding-right:40px; padding-bottom:60px; }
@@ -189,6 +199,7 @@
       display:flex; align-items:center; gap:10px; z-index:60;
       position:fixed; top:20px; right:max(40px, calc((100vw - 1180px)/2 + 40px));
     }
+    body.offline #desktopTopbarRight{ top:52px; }
   }
   .scroll{ flex:1; overflow-y:auto; padding:0 20px calc(84px + env(safe-area-inset-bottom,0px)); -webkit-overflow-scrolling:touch; }
   .bottomnav{
@@ -289,12 +300,14 @@
 </style>
 </head>
 <body>
+<div id="offlineBanner">📴 Sin conexión — se sincroniza al reconectar</div>
 <div id="mobileTopbar">
   <button id="mobileTopbarHome" onclick="go('home')">
     <img id="mobileTopbarLogoImg" src="icon-192.png" width="24" height="24" alt="" style="border-radius:7px; object-fit:cover;" />
     <span id="mobileTopbarNombre">AiresCare</span>
   </button>
   <div id="mobileTopbarRight">
+    <button id="mobileTopbarAdmin" onclick="abrirPanelAdmin()" style="display:none;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></button>
     <button id="mobileTopbarBell" onclick="go('notificaciones')" style="position:relative;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 21a2 2 0 0 0 4 0"/></svg><span id="mobileTopbarBellBadge" style="display:none;"></span></button>
     <button id="mobileTopbarProfile" onclick="go('perfil')"></button>
   </div>
@@ -1494,7 +1507,7 @@ function screenHome(){
   if(eqs.length === 0){
     return `
       <div class="screen">
-        <div class="scroll" style="display:flex; flex-direction:column;">
+        <div class="scroll" style="display:flex; flex-direction:column; padding-top:16px;">
           <div style="font-size:22px; font-weight:800;">¡Hola${state.perfil.nombre ? ", " + state.perfil.nombre : ""}!</div>
           <div style="font-size:13.5px; color:var(--ink-soft); margin-top:4px; line-height:1.4;">
             Registra tu primer aire acondicionado para empezar a recibir recordatorios de mantenimiento.
@@ -1519,7 +1532,7 @@ function screenHome(){
 
   return `
     <div class="screen">
-      <div class="scroll">
+      <div class="scroll" style="padding-top:16px;">
         <div style="font-size:22px; font-weight:800;">¡Hola${state.perfil.nombre ? ", " + state.perfil.nombre : ""}!</div>
         <div style="font-size:13.5px; color:var(--ink-soft); margin-top:4px; line-height:1.4;">
           Tus aires, siempre en las mejores condiciones.
@@ -2887,7 +2900,7 @@ function updateMobileTopbarProfile(){
   if(!btn) return;
   const isActive = state.screen === "perfil";
   btn.classList.toggle("active", isActive);
-  const foto = state.perfil && (state.perfil.foto || (state.usuario && state.usuario.foto));
+  const foto = state.perfil && state.perfil.foto;
   if(foto){
     btn.innerHTML = `<img src="${foto}" style="width:100%; height:100%; object-fit:cover; border-radius:999px;" alt="" />`;
   } else {
@@ -2925,6 +2938,8 @@ function updateSidebarActive(){
 
   const linkAdmin = document.getElementById("sidebarLinkAdmin");
   if(linkAdmin) linkAdmin.style.display = esAdmin() ? "flex" : "none";
+  const mobileAdminBtn = document.getElementById("mobileTopbarAdmin");
+  if(mobileAdminBtn) mobileAdminBtn.style.display = esAdmin() ? "flex" : "none";
 
   const esPantallaAuth = state.screen === "cargando" || state.screen === "login" || state.screen === "bienvenida" || state.screen === "bloqueado" || state.screen === "cuentaEliminada";
   const mobileTop = document.getElementById("mobileTopbar");
@@ -2948,7 +2963,7 @@ function updateSidebarActive(){
 
   const desktopAvatarBtn = document.getElementById("desktopTopbarAvatar");
   if(desktopAvatarBtn){
-    const foto = state.perfil && (state.perfil.foto || (state.usuario && state.usuario.foto));
+    const foto = state.perfil && state.perfil.foto;
     desktopAvatarBtn.innerHTML = foto
       ? `<img src="${foto}" style="width:100%; height:100%; object-fit:cover; border-radius:999px;" alt="" />`
       : svg("user", 17, "var(--ink-soft)");
@@ -3007,12 +3022,16 @@ document.getElementById("iosBannerBtn").addEventListener("click", ()=>{
 });
 
 /* ---------- Aviso de conexión perdida/recuperada ---------- */
+if(typeof navigator !== "undefined" && navigator.onLine === false){
+  document.body.classList.add("offline");
+}
 window.addEventListener("online", ()=>{
+  document.body.classList.remove("offline");
   showToast("Conexión recuperada — sincronizando...");
   sincronizarDesdeNube();
 });
 window.addEventListener("offline", ()=>{
-  showToast("📴 Sin conexión — se sincroniza al reconectar");
+  document.body.classList.add("offline");
 });
 
 /* ---------- Notificaciones de mantenimiento ---------- */
