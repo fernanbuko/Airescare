@@ -2328,7 +2328,8 @@ function estadoNotificaciones(){
   }
   const perm = Notification.permission;
   if(perm === "granted"){
-    return `<span class="chip" style="background:#E4F6EF; color:var(--mint);">Activadas</span>`;
+    return `<span class="chip" style="background:#E4F6EF; color:var(--mint);">Activadas</span>
+      <button onclick="registrarTokenFCM(true)" style="background:none; border:none; padding:0; margin-left:8px; color:var(--primary); font-size:11px; font-weight:700; text-decoration:underline; cursor:pointer;">Reintentar registro</button>`;
   }
   if(perm === "denied"){
     return `<span class="chip" style="background:#FBE7E7; color:#D64545;">Bloqueadas</span>`;
@@ -2651,8 +2652,12 @@ function pedirPermisoNotificaciones(){
   });
 }
 
-async function registrarTokenFCM(){
-  if(!messaging || !state.usuario || Notification.permission !== "granted") return;
+async function registrarTokenFCM(mostrarAviso){
+  if(!messaging){
+    if(mostrarAviso) showToast("Este navegador no soporta notificaciones push");
+    return;
+  }
+  if(!state.usuario || Notification.permission !== "granted") return;
   try{
     const registration = await navigator.serviceWorker.ready;
     const token = await messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
@@ -2662,9 +2667,13 @@ async function registrarTokenFCM(){
         creado: firebase.firestore.FieldValue.serverTimestamp(),
         userAgent: navigator.userAgent
       });
+      if(mostrarAviso) showToast("Dispositivo registrado para notificaciones push ✓");
+    } else if(mostrarAviso){
+      showToast("No se obtuvo un token de notificaciones");
     }
   }catch(e){
     console.error("No se pudo registrar el token de notificaciones push:", e);
+    if(mostrarAviso) showToast("Error: " + (e.message || e.code || "no se pudo registrar"));
   }
 }
 
