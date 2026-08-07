@@ -113,19 +113,15 @@ async function main() {
         }
 
         if (iso === hoyISO) {
-          avisos.push({
-            eq,
-            clave: `${h.id}_${iso}_hoy`,
-            titulo: `Hoy: mantenimiento de ${eq.nombre}`,
-            hora: h.hora,
-          });
-
-          // Recordatorio 30 minutos antes, solo si ese registro tiene hora puesta.
-          // La hora forma parte de la clave: si la cambias, se manda de nuevo.
+          // Si tiene hora puesta y ya estamos dentro de los 30 minutos previos,
+          // mandamos SOLO el aviso de "30 minutos" (mas especifico) y nos
+          // saltamos el de "Hoy" para no repetir el mismo aviso dos veces.
+          let dentroDe30Min = false;
           if (h.hora) {
             const minutosCita = minutosDeHora(h.hora);
             const diferencia = minutosCita - minutosAhora;
             if (diferencia >= 0 && diferencia <= 30) {
+              dentroDe30Min = true;
               avisos.push({
                 eq,
                 clave: `${h.id}_${iso}_${h.hora}_30min`,
@@ -133,6 +129,15 @@ async function main() {
                 hora: h.hora,
               });
             }
+          }
+
+          if (!dentroDe30Min) {
+            avisos.push({
+              eq,
+              clave: `${h.id}_${iso}_hoy`,
+              titulo: `Hoy: mantenimiento de ${eq.nombre}`,
+              hora: h.hora,
+            });
           }
         }
       });
