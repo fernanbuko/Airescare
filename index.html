@@ -964,7 +964,7 @@ function screenHome(){
       <div class="screen">
         <div style="padding: 14px 20px 0; display:flex; justify-content:flex-end; align-items:center; gap:10px;">
           <button class="iconbtn">${svg('bell',22,'var(--ink)')}</button>
-          <button class="topbar-avatar" onclick="go('perfil')">${svg('user',17,'var(--ink-soft)')}</button>
+          <button class="topbar-avatar" onclick="go('perfil')">${(state.perfil.foto || (state.usuario && state.usuario.foto)) ? `<img src="${state.perfil.foto || (state.usuario && state.usuario.foto)}" alt="" style="width:100%; height:100%; object-fit:cover; border-radius:999px;" />` : svg('user',17,'var(--ink-soft)')}</button>
         </div>
         <div class="scroll" style="display:flex; flex-direction:column;">
           <div style="font-size:22px; font-weight:800;">¡Hola${state.perfil.nombre ? ", " + state.perfil.nombre : ""}!</div>
@@ -993,7 +993,7 @@ function screenHome(){
     <div class="screen">
       <div style="padding: 14px 20px 0; display:flex; justify-content:flex-end; align-items:center; gap:10px;">
         <button class="iconbtn">${svg('bell',22,'var(--ink)')}</button>
-        <button class="topbar-avatar" onclick="go('perfil')">${svg('user',17,'var(--ink-soft)')}</button>
+        <button class="topbar-avatar" onclick="go('perfil')">${(state.perfil.foto || (state.usuario && state.usuario.foto)) ? `<img src="${state.perfil.foto || (state.usuario && state.usuario.foto)}" alt="" style="width:100%; height:100%; object-fit:cover; border-radius:999px;" />` : svg('user',17,'var(--ink-soft)')}</button>
       </div>
       <div class="scroll">
         <div style="font-size:22px; font-weight:800;">¡Hola${state.perfil.nombre ? ", " + state.perfil.nombre : ""}!</div>
