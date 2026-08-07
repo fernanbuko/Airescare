@@ -529,7 +529,7 @@ function iniciarSesionGoogle(){
 function cerrarSesion(){
   showConfirm("¿Cerrar sesión? Tus datos siguen guardados en la nube con tu cuenta de Google, puedes volver a entrar cuando quieras.", () => {
     auth.signOut();
-  });
+  }, "Cerrar sesión", "primary");
 }
 
 if(auth){
@@ -801,13 +801,15 @@ function showToast(msg){
   showToast._t = setTimeout(()=>t.classList.remove("show"), 2200);
 }
 
-function showConfirm(message, onAccept){
+function showConfirm(message, onAccept, acceptLabel, acceptStyle){
   const overlay = document.getElementById("confirmOverlay");
   document.getElementById("confirmMessage").textContent = message;
   overlay.classList.add("show");
 
   const acceptBtn = document.getElementById("confirmAcceptBtn");
   const cancelBtn = document.getElementById("confirmCancelBtn");
+  acceptBtn.textContent = acceptLabel || "Eliminar";
+  acceptBtn.style.background = acceptStyle === "primary" ? "var(--primary)" : "#D64545";
 
   const cleanup = () => {
     overlay.classList.remove("show");
