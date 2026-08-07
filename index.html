@@ -2168,18 +2168,7 @@ function screenPerfil(){
     <div class="screen">
       ${topBar("Perfil","home")}
       <div class="scroll">
-        <div style="display:flex; align-items:center; gap:14px;">
-          ${(p.foto || state.usuario.foto) ? `<img src="${p.foto || state.usuario.foto}" width="56" height="56" style="border-radius:999px; object-fit:cover;" alt="" />` : `
-          <div style="width:56px;height:56px;border-radius:999px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center;">
-            ${inicial ? `<span style="font-size:20px; font-weight:800; color:var(--primary);">${inicial}</span>` : svg('user',26,'var(--primary)')}
-          </div>`}
-          <div>
-            <div style="font-weight:800; font-size:16px;">${p.negocioNombre || p.nombre || state.usuario.nombre || "Mi cuenta"}</div>
-            <div style="font-size:12.5px; color:var(--ink-soft);">${p.correo || state.usuario.correo || "Administra tus equipos y preferencias"}</div>
-          </div>
-        </div>
-
-        <div style="display:flex; gap:10px; margin-top:20px;">
+        <div style="display:flex; gap:10px; margin-top:4px;">
           <div class="card" style="flex:1; text-align:center; padding:14px 8px;">
             <div style="font-size:19px; font-weight:800; color:var(--primary);">${totalEquipos}</div>
             <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">Equipos</div>
@@ -2209,9 +2198,9 @@ function screenPerfil(){
         <div style="margin-top:22px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Cuenta</div>
         <div class="card" style="margin-top:8px;">
           <div style="display:flex; align-items:center; gap:12px;">
-            ${(p.foto || state.usuario.foto) ? `<img src="${p.foto || state.usuario.foto}" width="44" height="44" style="border-radius:999px; object-fit:cover;" alt="" />` : `<div style="width:44px;height:44px;border-radius:999px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center;">${svg('user',22,'#0E63B0')}</div>`}
+            ${state.usuario.foto ? `<img src="${state.usuario.foto}" width="44" height="44" style="border-radius:999px; object-fit:cover;" alt="" />` : `<div style="width:44px;height:44px;border-radius:999px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center;">${svg('user',22,'#0E63B0')}</div>`}
             <div>
-              <div style="font-weight:700; font-size:14px;">${p.negocioNombre || state.usuario.nombre || "Tu cuenta"}</div>
+              <div style="font-weight:700; font-size:14px;">${state.usuario.nombre || "Tu cuenta"}</div>
               <div style="font-size:12px; color:var(--ink-soft);">${state.usuario.correo}</div>
             </div>
           </div>
