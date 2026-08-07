@@ -1137,11 +1137,7 @@ function screenAdminPanel(){
       <div style="display:flex; gap:10px; margin-bottom:20px;">
         <div class="card" style="flex:1; text-align:center; padding:14px 8px;">
           <div style="font-size:19px; font-weight:800; color:var(--primary);">${panel.totalCuentas || 0}</div>
-          <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">Cuentas</div>
-        </div>
-        <div class="card" style="flex:1; text-align:center; padding:14px 8px;">
-          <div style="font-size:19px; font-weight:800; color:var(--primary);">${panel.totalEquipos || 0}</div>
-          <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">Equipos</div>
+          <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">Cuentas registradas</div>
         </div>
       </div>
       <div style="font-weight:800; font-size:14.5px; margin-bottom:10px;">Cuentas registradas</div>
@@ -1167,7 +1163,6 @@ function screenAdminPanel(){
             <div style="font-size:10.5px; margin-top:2px; color:${inactiva ? 'var(--warn)' : 'var(--mint)'};">
               ${inactiva ? "⚠ " : "● "}Última conexión: ${c.ultimaConexion ? tiempoRelativoMs(c.ultimaConexion) : "No disponible"}${inactiva ? " — contactar" : ""}
             </div>
-            <div style="font-size:10.5px; color:var(--ink-soft); margin-top:2px;">🔧 ${c.equipos || 0} equipo${c.equipos===1?'':'s'}</div>
             <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:8px;">
               ${hayBloqueoPendiente
                 ? `<span style="font-size:11px; color:var(--warn); font-weight:700;">⏳ Se va a ${bloqueadoEfectivo ? "bloquear" : "desbloquear"} en la próxima corrida</span>`
