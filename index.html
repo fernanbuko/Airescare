@@ -280,7 +280,7 @@
 <body>
 <div id="mobileTopbar">
   <button id="mobileTopbarHome" onclick="go('home')">
-    <img src="icon-192.png" width="24" height="24" alt="" />
+    <img id="mobileTopbarLogoImg" src="icon-192.png" width="24" height="24" alt="" style="border-radius:7px; object-fit:cover;" />
     <span id="mobileTopbarNombre">AiresCare</span>
   </button>
   <div id="mobileTopbarRight">
@@ -292,7 +292,7 @@
   <nav id="sidebar">
     <button class="sidebar-logo" onclick="go('home')" style="border:none; background:none; cursor:pointer; text-align:left; width:100%;">
       <div class="sidebar-logo-icon">
-        <img src="icon-192.png" width="30" height="30" style="border-radius:9px; display:block;" alt="" />
+        <img id="sidebarLogoImg" src="icon-192.png" width="30" height="30" style="border-radius:9px; display:block; object-fit:cover;" alt="" />
       </div>
       <span id="sidebarLogoNombre">AiresCare</span>
     </button>
@@ -2399,6 +2399,12 @@ function updateSidebarActive(){
   const spanSidebar = document.getElementById("sidebarLogoNombre");
   if(spanMobile) spanMobile.textContent = nombreMostrado;
   if(spanSidebar) spanSidebar.textContent = nombreMostrado;
+
+  const logoNegocio = state.perfil && state.perfil.negocioLogo;
+  const logoMobile = document.getElementById("mobileTopbarLogoImg");
+  const logoSidebar = document.getElementById("sidebarLogoImg");
+  if(logoMobile) logoMobile.src = logoNegocio || "icon-192.png";
+  if(logoSidebar) logoSidebar.src = logoNegocio || "icon-192.png";
 }
 render();
 history.replaceState({screen: state.screen}, "", "");
