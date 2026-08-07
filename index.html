@@ -87,7 +87,7 @@
   #mobileTopbarProfile{
     background:var(--chip-bg); border:none; border-radius:999px;
     width:32px; height:32px; display:flex; align-items:center; justify-content:center;
-    padding:0; margin:0; flex-shrink:0; color:var(--ink-soft);
+    padding:0; margin:0; flex-shrink:0; color:var(--ink-soft); overflow:hidden;
   }
   #mobileTopbarProfile.active{ background:var(--chip-bg); color:var(--primary); }
   #app{
@@ -267,7 +267,7 @@
 <div id="mobileTopbar">
   <button id="mobileTopbarHome" onclick="go('home')">
     <img src="icon-192.png" width="24" height="24" alt="" />
-    <span>AiresCare</span>
+    <span id="mobileTopbarNombre">AiresCare</span>
   </button>
   <button id="mobileTopbarProfile" onclick="go('perfil')"></button>
 </div>
@@ -277,7 +277,7 @@
       <div class="sidebar-logo-icon">
         <img src="icon-192.png" width="30" height="30" style="border-radius:9px; display:block;" alt="" />
       </div>
-      <span>AiresCare</span>
+      <span id="sidebarLogoNombre">AiresCare</span>
     </button>
     <button class="sidebar-cta" onclick="go('agregarEquipo')">+ Registrar equipo</button>
     <div class="sidebar-nav">
@@ -2348,7 +2348,12 @@ function updateMobileTopbarProfile(){
   if(!btn) return;
   const isActive = state.screen === "perfil";
   btn.classList.toggle("active", isActive);
-  btn.innerHTML = svg("user", 17, isActive ? "var(--primary)" : "var(--ink-soft)");
+  const foto = state.perfil && (state.perfil.foto || (state.usuario && state.usuario.foto));
+  if(foto){
+    btn.innerHTML = `<img src="${foto}" style="width:100%; height:100%; object-fit:cover; border-radius:999px;" alt="" />`;
+  } else {
+    btn.innerHTML = svg("user", 17, isActive ? "var(--primary)" : "var(--ink-soft)");
+  }
 }
 
 function updateSidebarActive(){
@@ -2369,6 +2374,12 @@ function updateSidebarActive(){
   const sidebarEl = document.getElementById("sidebar");
   if(mobileTop) mobileTop.style.display = esPantallaAuth ? "none" : "";
   if(sidebarEl) sidebarEl.style.display = esPantallaAuth ? "none" : "";
+
+  const nombreMostrado = (state.perfil && state.perfil.negocioNombre) || "AiresCare";
+  const spanMobile = document.getElementById("mobileTopbarNombre");
+  const spanSidebar = document.getElementById("sidebarLogoNombre");
+  if(spanMobile) spanMobile.textContent = nombreMostrado;
+  if(spanSidebar) spanSidebar.textContent = nombreMostrado;
 }
 render();
 history.replaceState({screen: state.screen}, "", "");
