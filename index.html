@@ -637,6 +637,7 @@ if(auth){
       const necesitaOnboarding = await sincronizarDesdeNube();
       if(!state.usuario) return; // se detectó bloqueo durante la sincronización
       if(notificacionesSoportadas() && Notification.permission === "granted") registrarTokenFCM();
+      cargarNotificaciones();
       if(necesitaOnboarding) go("bienvenida", true);
       else if(state.screen === "login" || state.screen === "cargando") go("home", true);
       else render();
@@ -688,7 +689,9 @@ let state = {
   usuario: null,
   onboardingOmitido: false,
   adminUsuarios: [],
-  adminUsuariosCargando: false
+  adminUsuariosCargando: false,
+  notificaciones: [],
+  notifNoLeidas: 0
 };
 
 function fechaISOaDMY(iso){
@@ -927,6 +930,7 @@ function go(screen, replace){
   state.screen = screen;
   render();
   document.querySelector(".scroll") && (document.querySelector(".scroll").scrollTop = 0);
+  if(screen === "notificaciones") marcarNotificacionesLeidas();
   if(replace){
     history.replaceState({screen}, "", "");
   } else {
@@ -1144,13 +1148,96 @@ function omitirBienvenida(){
   go("home", true);
 }
 
+function botonCampanita(){
+  const n = state.notifNoLeidas || 0;
+  return `
+    <button class="iconbtn" onclick="go('notificaciones')" style="position:relative;">
+      ${svg('bell',22,'var(--ink)')}
+      ${n > 0 ? `<span style="position:absolute; top:-2px; right:-2px; background:#D64545; color:#fff; font-size:10px; font-weight:800; min-width:16px; height:16px; border-radius:999px; display:flex; align-items:center; justify-content:center; padding:0 3px;">${n>9?'9+':n}</span>` : ""}
+    </button>`;
+}
+
+async function cargarNotificaciones(){
+  if(!db || !state.usuario) return;
+  try{
+    const snap = await db.collection("usuarios").doc(state.usuario.uid).collection("notificaciones")
+      .orderBy("creada", "desc").limit(50).get();
+    state.notificaciones = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    state.notifNoLeidas = state.notificaciones.filter(n=>!n.leida).length;
+    if(state.screen === "home" || state.screen === "notificaciones") render();
+  }catch(e){
+    console.error("No se pudieron cargar las notificaciones:", e);
+  }
+}
+
+async function marcarNotificacionesLeidas(){
+  if(!db || !state.usuario) return;
+  const pendientes = (state.notificaciones||[]).filter(n=>!n.leida);
+  if(pendientes.length === 0) return;
+  state.notificaciones.forEach(n=>n.leida = true);
+  state.notifNoLeidas = 0;
+  render();
+  try{
+    const batch = db.batch();
+    pendientes.forEach(n=>{
+      batch.update(db.collection("usuarios").doc(state.usuario.uid).collection("notificaciones").doc(n.id), { leida: true });
+    });
+    await batch.commit();
+  }catch(e){
+    console.error("No se pudo marcar como leídas:", e);
+  }
+}
+
+function tiempoRelativo(timestamp){
+  if(!timestamp || !timestamp.toDate) return "";
+  const fecha = timestamp.toDate();
+  const diffMin = Math.round((Date.now() - fecha.getTime()) / 60000);
+  if(diffMin < 1) return "ahora";
+  if(diffMin < 60) return `hace ${diffMin} min`;
+  const diffH = Math.round(diffMin/60);
+  if(diffH < 24) return `hace ${diffH} h`;
+  const diffD = Math.round(diffH/24);
+  return `hace ${diffD} día${diffD===1?'':'s'}`;
+}
+
+function screenNotificaciones(){
+  const lista = state.notificaciones || [];
+  const filas = lista.map(n=>`
+    <div class="card" style="margin-bottom:10px; ${!n.leida ? 'border-color:var(--primary);' : ''} ${n.equipoId?'cursor:pointer;':''}" ${n.equipoId?`onclick="openEquipo(${n.equipoId})"`:''}>
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+        <div style="font-weight:700; font-size:13.5px;">${n.titulo || "Notificación"}</div>
+        ${!n.leida ? `<span style="width:8px; height:8px; border-radius:999px; background:var(--primary); flex-shrink:0; margin-top:4px;"></span>` : ""}
+      </div>
+      ${n.cuerpo ? `<div style="font-size:12.5px; color:var(--ink-soft); margin-top:4px;">${n.cuerpo}</div>` : ""}
+      <div style="font-size:11px; color:var(--ink-soft); margin-top:6px;">${tiempoRelativo(n.creada)}</div>
+    </div>`).join("");
+
+  return `
+    <div class="screen">
+      ${topBar("Notificaciones","home")}
+      <div class="scroll">
+        ${lista.length ? filas : `
+        <div style="display:flex; flex-direction:column; align-items:center; text-align:center; padding-top:60px;">
+          ${svg('bell',36,'var(--ink-soft)')}
+          <div style="font-weight:700; font-size:14.5px; margin-top:14px;">Sin notificaciones todavía</div>
+          <div style="font-size:12.5px; color:var(--ink-soft); margin-top:6px; max-width:240px;">
+            Aquí verás los avisos de mantenimientos próximos.
+          </div>
+        </div>`}
+      </div>
+      ${bottomNav("home")}
+    </div>`;
+}
+
 function screenHome(){
   const eqs = state.equipos;
 
   if(eqs.length === 0){
     return `
       <div class="screen">
-        
+        <div style="display:flex; justify-content:flex-end; padding:14px 20px 0;">
+          ${botonCampanita()}
+        </div>
         <div class="scroll" style="display:flex; flex-direction:column;">
           <div style="font-size:22px; font-weight:800;">¡Hola${state.perfil.nombre ? ", " + state.perfil.nombre : ""}!</div>
           <div style="font-size:13.5px; color:var(--ink-soft); margin-top:4px; line-height:1.4;">
@@ -1176,7 +1263,9 @@ function screenHome(){
 
   return `
     <div class="screen">
-      
+      <div style="display:flex; justify-content:flex-end; padding:14px 20px 0;">
+        ${botonCampanita()}
+      </div>
       <div class="scroll">
         <div style="font-size:22px; font-weight:800;">¡Hola${state.perfil.nombre ? ", " + state.perfil.nombre : ""}!</div>
         <div style="font-size:13.5px; color:var(--ink-soft); margin-top:4px; line-height:1.4;">
@@ -2514,6 +2603,7 @@ function render(){
   const map = {
     cargando: screenCargando,
     login: screenLogin,
+    notificaciones: screenNotificaciones,
     bloqueado: screenBloqueado,
     bienvenida: screenBienvenida,
     home: screenHome,
@@ -2728,6 +2818,10 @@ document.addEventListener("visibilitychange", ()=>{
   if(document.visibilityState === "visible") revisarMantenimientosProximos(false);
 });
 setInterval(()=>revisarMantenimientosProximos(false), 30*60*1000);
+setInterval(()=>cargarNotificaciones(), 5*60*1000);
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState === "visible") cargarNotificaciones();
+});
 
 // Sincronizar con la nube al abrir la app
 sincronizarDesdeNube();
