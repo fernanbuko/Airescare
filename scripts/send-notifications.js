@@ -66,6 +66,197 @@ function diasEntreISO(isoDesde, isoHasta) {
   return Math.floor((t2 - t1) / 86400000);
 }
 
+/* ---------------------------------------------------------
+   Panel de administración: arma un resumen de TODAS las cuentas
+   registradas en AiresCare (el robot ya tiene acceso total como
+   administrador) y lo guarda DENTRO de la propia cuenta admin, en
+   usuarios/{ADMIN_UID}/admin/panel — así la app solo necesita leer
+   sus propios datos para mostrarlo, sin reglas de Firestore especiales.
+
+   Bloquear/desbloquear y eliminar cuentas ajenas tampoco lo hace la
+   app directamente (nunca tiene permiso sobre los datos de otra
+   cuenta) — deja una "solicitud" en usuarios/{ADMIN_UID}/admin/, y
+   este mismo robot la ejecuta en su próxima corrida.
+----------------------------------------------------------*/
+const ADMIN_UID = "Vf0N4vay8VZIeLqKGARrfwclzy42";
+
+async function procesarSolicitudesEliminacion() {
+  try {
+    const ref = db.collection("usuarios").doc(ADMIN_UID).collection("admin").doc("solicitudesEliminacion");
+    const doc = await ref.get();
+    const solicitudes = doc.exists ? (doc.data().value || []) : [];
+    if (solicitudes.length === 0) return;
+
+    const pendientes = [];
+    for (const solicitud of solicitudes) {
+      const { uid, nombre } = solicitud || {};
+      if (!uid || uid === ADMIN_UID) continue; // nunca te borres a ti mismo por accidente
+      try {
+        let correo = "";
+        try {
+          const authUser = await admin.auth().getUser(uid);
+          correo = authUser.email || "";
+        } catch (e) {
+          correo = "";
+        }
+        await db.recursiveDelete(db.collection("usuarios").doc(uid));
+        try {
+          await admin.auth().deleteUser(uid);
+        } catch (e) {
+          console.log(`  (no se pudo borrar de Authentication, puede que ya no existiera): ${e.message}`);
+        }
+        if (correo) {
+          const registroRef = db.collection("sistema").doc("cuentasEliminadas");
+          const registroDoc = await registroRef.get();
+          const correosActuales = registroDoc.exists ? (registroDoc.data().correos || []) : [];
+          if (!correosActuales.includes(correo)) {
+            await registroRef.set({ correos: [...correosActuales, correo] });
+          }
+        }
+        console.log(`Cuenta eliminada por completo: ${nombre || "(sin nombre)"} (${uid})`);
+      } catch (e) {
+        console.error(`No se pudo eliminar la cuenta ${uid}:`, e.message);
+        pendientes.push(solicitud); // se reintenta en la proxima corrida
+      }
+    }
+    await ref.set({ value: pendientes });
+  } catch (e) {
+    console.error("Error procesando solicitudes de eliminación:", e.message);
+  }
+}
+
+async function procesarSolicitudesBloqueo() {
+  try {
+    const ref = db.collection("usuarios").doc(ADMIN_UID).collection("admin").doc("solicitudesBloqueo");
+    const doc = await ref.get();
+    const solicitudes = doc.exists ? (doc.data().value || []) : [];
+    if (solicitudes.length === 0) return;
+
+    const pendientes = [];
+    for (const solicitud of solicitudes) {
+      const { uid, bloquear, nombre } = solicitud || {};
+      if (!uid || uid === ADMIN_UID) continue; // nunca te bloquees a ti mismo por accidente
+      try {
+        await admin.auth().updateUser(uid, { disabled: !!bloquear });
+        console.log(`${bloquear ? "Bloqueada" : "Desbloqueada"} la cuenta: ${nombre || "(sin nombre)"} (${uid})`);
+      } catch (e) {
+        console.error(`No se pudo ${bloquear ? "bloquear" : "desbloquear"} la cuenta ${uid}:`, e.message);
+        pendientes.push(solicitud); // se reintenta en la proxima corrida
+      }
+    }
+    await ref.set({ value: pendientes });
+  } catch (e) {
+    console.error("Error procesando solicitudes de bloqueo:", e.message);
+  }
+}
+
+async function actualizarPanelAdmin() {
+  try {
+    const usuarios = await db.collection("usuarios").listDocuments();
+    const cuentas = [];
+    let totalEquipos = 0;
+
+    for (const usuarioRef of usuarios) {
+      if (usuarioRef.id === ADMIN_UID) continue; // tu propia cuenta no cuenta
+
+      const snap = await usuarioRef.get();
+      if (!snap.exists) continue;
+      const data = snap.data();
+
+      let equipos = [];
+      try {
+        equipos = data.equipos ? JSON.parse(data.equipos) : [];
+      } catch (e) {
+        equipos = [];
+      }
+      let perfil = {};
+      try {
+        perfil = data.perfil ? JSON.parse(data.perfil) : {};
+      } catch (e) {
+        perfil = {};
+      }
+
+      let correo = "";
+      let bloqueado = false;
+      let fechaCreacionAuth = null;
+      try {
+        const authUser = await admin.auth().getUser(usuarioRef.id);
+        correo = authUser.email || "";
+        bloqueado = !!authUser.disabled;
+        fechaCreacionAuth = authUser.metadata && authUser.metadata.creationTime
+          ? new Date(authUser.metadata.creationTime).getTime()
+          : null;
+      } catch (e) {
+        correo = "";
+      }
+
+      let ultimaConexion = null;
+      try {
+        const conexionDoc = await usuarioRef.collection("meta").doc("conexion").get();
+        if (conexionDoc.exists && conexionDoc.data().ultima && conexionDoc.data().ultima.toMillis) {
+          ultimaConexion = conexionDoc.data().ultima.toMillis();
+        }
+      } catch (e) {
+        ultimaConexion = null;
+      }
+
+      totalEquipos += equipos.length;
+      cuentas.push({
+        uid: usuarioRef.id,
+        correo,
+        bloqueado,
+        negocioNombre: perfil.negocioNombre || "",
+        nombre: perfil.nombre || "",
+        logo: perfil.negocioLogo || perfil.foto || "",
+        fechaRegistro: fechaCreacionAuth,
+        ultimaConexion,
+        equipos: equipos.length,
+      });
+    }
+
+    cuentas.sort((a, b) => (b.fechaRegistro || 0) - (a.fechaRegistro || 0));
+
+    const panelRef = db.collection("usuarios").doc(ADMIN_UID).collection("admin").doc("panel");
+    const panelAnteriorDoc = await panelRef.get();
+    const panelAnterior = panelAnteriorDoc.exists ? panelAnteriorDoc.data() : null;
+    const uidsConocidos = new Set(((panelAnterior && panelAnterior.cuentas) || []).map((c) => c.uid));
+    const cuentasNuevas = panelAnterior ? cuentas.filter((c) => !uidsConocidos.has(c.uid)) : [];
+
+    const resumen = {
+      actualizadoEn: Date.now(),
+      totalCuentas: cuentas.length,
+      totalEquipos,
+      cuentas,
+    };
+    await panelRef.set(resumen);
+    console.log(`Panel de administración actualizado: ${cuentas.length} cuenta(s), ${totalEquipos} equipo(s) en total.`);
+
+    if (cuentasNuevas.length > 0) {
+      const tokensSnap = await db.collection("usuarios").doc(ADMIN_UID).collection("tokens").get();
+      const tokens = tokensSnap.docs.map((t) => t.id);
+      if (tokens.length > 0) {
+        for (const cuenta of cuentasNuevas) {
+          try {
+            await admin.messaging().sendEachForMulticast({
+              tokens,
+              data: {
+                title: "Nueva cuenta registrada",
+                body: `${cuenta.negocioNombre || cuenta.nombre || cuenta.correo || "Alguien"} se acaba de registrar.`,
+                tag: `nueva_cuenta_${cuenta.uid}`,
+                url: "./",
+              },
+            });
+          } catch (e) {
+            console.error("No se pudo notificar cuenta nueva:", e.message);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error("No se pudo actualizar el panel de administración:", e.message);
+  }
+}
+
 async function main() {
   const ahora = ahoraEcuador();
   const hoyISO = isoDeFecha(ahora);
@@ -208,6 +399,13 @@ async function main() {
   }
 
   console.log(`Listo. Notificaciones enviadas: ${totalEnviadas}`);
+
+  // Panel de administración: primero se procesan las solicitudes
+  // pendientes (bloquear/eliminar), y AL FINAL se arma el resumen — así
+  // el panel ya refleja los cambios de esta misma corrida.
+  await procesarSolicitudesBloqueo();
+  await procesarSolicitudesEliminacion();
+  await actualizarPanelAdmin();
 }
 
 main().catch((err) => {
