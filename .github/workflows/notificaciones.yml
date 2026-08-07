@@ -2,8 +2,9 @@ name: Notificaciones de mantenimiento
 
 on:
   schedule:
-    # 13:00 UTC = 8:00 AM en Ecuador (UTC-5)
-    - cron: "0 13 * * *"
+    # Corre cada 30 minutos (GitHub no garantiza el minuto exacto, puede
+    # variar unos minutos según la carga de sus servidores).
+    - cron: "*/30 * * * *"
   workflow_dispatch: {} # permite ejecutarlo manualmente desde la pestaña "Actions"
 
 jobs:
