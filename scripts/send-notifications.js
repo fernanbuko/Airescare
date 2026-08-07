@@ -123,40 +123,44 @@ async function main() {
     // Tokens de notificacion push registrados por este usuario
     const tokensSnap = await db.collection("usuarios").doc(uid).collection("tokens").get();
     const tokens = tokensSnap.docs.map((t) => t.id);
-    if (tokens.length === 0) continue;
 
-    // Registro de lo ya notificado, para no repetir el mismo aviso
-    const logRef = db.collection("usuarios").doc(uid).collection("notifLog").doc("log");
-    const logSnap = await logRef.get();
-    const yaNotificado = logSnap.exists ? (logSnap.data().claves || []) : [];
-    const nuevasClaves = [];
+    // Notificaciones ya registradas antes, para no repetir el mismo aviso
+    // (esta misma coleccion es la que la app muestra en la campanita)
+    const notifSnap = await db.collection("usuarios").doc(uid).collection("notificaciones").get();
+    const yaNotificado = new Set(notifSnap.docs.map((d) => d.id));
 
     for (const { eq, clave, titulo } of avisos) {
-      if (yaNotificado.includes(clave)) continue;
+      if (yaNotificado.has(clave)) continue;
 
       const cuerpo = eq.cliente
         ? `Cliente: ${eq.cliente}${eq.marca ? " · " + eq.marca : ""}${eq.hora ? " · " + eq.hora : ""}`
         : (eq.marca || "Revisa el detalle en la app");
 
+      if (tokens.length > 0) {
+        try {
+          await admin.messaging().sendEachForMulticast({
+            tokens,
+            notification: { title: titulo, body: cuerpo },
+            data: { tag: clave, url: "./" },
+          });
+          console.log(`Push enviado a ${uid}: ${titulo}`);
+        } catch (e) {
+          console.error(`Error enviando push a ${uid}:`, e.message);
+        }
+      }
+
       try {
-        await admin.messaging().sendEachForMulticast({
-          tokens,
-          notification: { title: titulo, body: cuerpo },
-          data: { tag: clave, url: "./" },
+        await db.collection("usuarios").doc(uid).collection("notificaciones").doc(clave).set({
+          titulo,
+          cuerpo,
+          equipoId: eq.id,
+          creada: admin.firestore.FieldValue.serverTimestamp(),
+          leida: false,
         });
         totalEnviadas++;
-        nuevasClaves.push(clave);
-        console.log(`Enviado a ${uid}: ${titulo}`);
       } catch (e) {
-        console.error(`Error enviando a ${uid}:`, e.message);
+        console.error(`Error guardando notificacion para ${uid}:`, e.message);
       }
-    }
-
-    if (nuevasClaves.length > 0) {
-      await logRef.set(
-        { claves: admin.firestore.FieldValue.arrayUnion(...nuevasClaves) },
-        { merge: true }
-      );
     }
   }
 
