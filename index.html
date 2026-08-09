@@ -577,6 +577,12 @@ const firebaseConfig = {
 const ADMIN_EMAILS = ["fernandotapia7@gmail.com"];
 const ADMIN_UIDS = ["Vf0N4vay8VZIeLqKGARrfwclzy42"];
 const MI_DOMINIO_APP = "https://fernanbuko.github.io/Airescare/";
+let CODIGO_DESDE_LINK = null;
+try{
+  const params = new URLSearchParams(window.location.search);
+  const c = params.get("codigo");
+  if(c) CODIGO_DESDE_LINK = c.trim().toUpperCase();
+}catch(e){}
 function esAdmin(){
   if(!state.usuario) return false;
   const correo = (state.usuario.correo || "").toLowerCase();
@@ -930,6 +936,21 @@ async function sincronizarDesdeNube(){
 
     // Cuenta totalmente nueva: todavía no eligió si es negocio o cliente.
     if(!propioData.tipoCuenta && !propioDoc.exists){
+      // Si llegó desde un link con código (compartido por su técnico), se
+      // salta el paso de elegir tipo de cuenta y de escribir el código a
+      // mano — se vincula directo.
+      if(CODIGO_DESDE_LINK){
+        state.modoCliente = true;
+        try{
+          await docPropio().set({ tipoCuenta: "cliente" }, { merge: true });
+          state.usuario.tipoCuenta = "cliente";
+          await enviarCodigoVinculacion(CODIGO_DESDE_LINK);
+          escucharBloqueoPropio();
+          return state.usuario.vinculacionPendiente ? "esperandoVinculacion" : "ingresarCodigo";
+        }catch(e){
+          console.error("No se pudo vincular automáticamente desde el link:", e);
+        }
+      }
       escucharBloqueoPropio();
       return "elegirTipoCuenta";
     }
@@ -1118,7 +1139,8 @@ let state = {
   notificaciones: [],
   notifNoLeidas: 0,
   modoCliente: false,
-  vistaCliente: null
+  vistaCliente: null,
+  previsualizarModoCliente: false
 };
 state.equipos = flattenClientes(state.clientes);
 
@@ -1436,8 +1458,34 @@ function topBar(title, showBack, rightHtml){
       <div style="width:32px; display:flex; justify-content:flex-end;">${rightHtml||""}</div>
     </div>`;
 }
+function activarVistaPreview(tipo){
+  state.previsualizarModoCliente = tipo === "cliente";
+  if(state.previsualizarModoCliente){
+    state.vistaCliente = {
+      negocioNombre: state.perfil.negocioNombre || "AiresCare",
+      negocioLogo: state.perfil.negocioLogo || "",
+      cliente: { nombre: "Cliente de ejemplo", telefono: "", direccion: "" },
+      equipos: [
+        {
+          id: 1,
+          nombre: "Sala",
+          marca: "LG Inverter 12k BTU",
+          proximo: (()=>{ const d=new Date(); d.setDate(d.getDate()+12); return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`; })(),
+          filtroLimpio: (()=>{ const d=new Date(); d.setDate(d.getDate()-6); return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`; })(),
+          historial: [
+            { id:"ej1", fecha:"15/05/2026", tipo:"Mantenimiento Preventivo", realizado:true },
+            { id:"ej2", fecha:"20/02/2026", tipo:"Revisión de gas", realizado:true }
+          ]
+        }
+      ],
+      actualizadoEn: Date.now()
+    };
+  }
+  go("home");
+}
+
 function bottomNav(active){
-  if(state.modoCliente){
+  if(state.modoCliente || state.previsualizarModoCliente){
     return `<div class="bottomnav" style="grid-template-columns:1fr;">
       <button class="navbtn ${active==='home'?'active':''}" onclick="go('home')">
         ${svg('home',18, active==='home'?'var(--primary)':'var(--ink-soft)')}
@@ -1525,6 +1573,16 @@ function screenAdminPanel(){
   const bloqueosSolicitados = state.adminBloqueosSolicitados || {};
   const eliminacionesSolicitadas = state.adminEliminacionesSolicitadas || [];
 
+  const selectorVistaPreview = `
+    <div class="card" style="margin-top:4px; margin-bottom:16px;">
+      <div style="font-size:11px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px; margin-bottom:8px;">👁️ Vista de previsualización</div>
+      <div style="display:flex; gap:8px;">
+        <button onclick="activarVistaPreview(null)" style="flex:1; padding:8px 0; border-radius:999px; font-size:12px; font-weight:700; cursor:pointer; border:1px solid ${!state.previsualizarModoCliente ? 'var(--primary)' : 'var(--line)'}; background:${!state.previsualizarModoCliente ? 'var(--primary)' : '#fff'}; color:${!state.previsualizarModoCliente ? '#fff' : 'var(--ink)'};">🔧 Negocio</button>
+        <button onclick="activarVistaPreview('cliente')" style="flex:1; padding:8px 0; border-radius:999px; font-size:12px; font-weight:700; cursor:pointer; border:1px solid ${state.previsualizarModoCliente ? 'var(--primary)' : 'var(--line)'}; background:${state.previsualizarModoCliente ? 'var(--primary)' : '#fff'}; color:${state.previsualizarModoCliente ? '#fff' : 'var(--ink)'};">👤 Cliente</button>
+      </div>
+      ${state.previsualizarModoCliente ? `<div style="font-size:11px; color:var(--warn); margin-top:8px; line-height:1.4;">⚠️ Viendo la app como la vería un cliente — con datos de ejemplo, no se guarda nada. Ve a Inicio para verla.</div>` : ""}
+    </div>`;
+
   let contenido;
   if(cargando && !panel){
     contenido = `<div style="text-align:center; padding:40px; color:var(--ink-soft); font-size:13px;">Cargando...</div>`;
@@ -1588,7 +1646,7 @@ function screenAdminPanel(){
   return `
     <div class="screen">
       ${topBar("Administración","perfil")}
-      <div class="scroll">${contenido}</div>
+      <div class="scroll">${selectorVistaPreview}${contenido}</div>
       ${bottomNav("perfil")}
     </div>`;
 }
@@ -1664,9 +1722,8 @@ function screenIngresarCodigo(){
     </div>`;
 }
 
-async function enviarCodigoVinculacion(){
-  const input = document.getElementById("cli-codigo");
-  const codigo = input.value.trim().toUpperCase();
+async function enviarCodigoVinculacion(codigoForzado){
+  const codigo = codigoForzado ? codigoForzado.toUpperCase() : (document.getElementById("cli-codigo").value.trim().toUpperCase());
   if(!codigo){ showToast("Escribe el código"); return; }
   if(!db || !state.usuario) return;
 
@@ -1902,6 +1959,11 @@ function screenHomeCliente(){
   return `
     <div class="screen">
       <div class="scroll">
+        ${state.previsualizarModoCliente ? `
+        <div class="card" style="background:var(--chip-bg); border-color:var(--primary); display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:14px;">
+          <span style="font-size:11.5px; color:var(--primary); font-weight:700;">👁️ Vista previa (datos de ejemplo)</span>
+          <button onclick="activarVistaPreview(null); go('adminPanel');" style="background:var(--primary); color:#fff; border:none; border-radius:8px; padding:6px 10px; font-size:11px; font-weight:700; cursor:pointer;">Salir</button>
+        </div>` : ""}
         <div style="display:flex; align-items:center; gap:10px;">
           ${v.negocioLogo ? `<img src="${v.negocioLogo}" width="36" height="36" style="border-radius:10px; object-fit:cover;" alt="" />` : ""}
           <div style="font-size:12px; color:var(--ink-soft);">Mantenimiento de tus equipos por</div>
@@ -1956,6 +2018,11 @@ function screenPerfilCliente(){
     <div class="screen">
       ${topBar("Mi cuenta","home")}
       <div class="scroll">
+        ${state.previsualizarModoCliente ? `
+        <div class="card" style="background:var(--chip-bg); border-color:var(--primary); display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:14px;">
+          <span style="font-size:11.5px; color:var(--primary); font-weight:700;">👁️ Vista previa (datos de ejemplo)</span>
+          <button onclick="activarVistaPreview(null); go('adminPanel');" style="background:var(--primary); color:#fff; border:none; border-radius:8px; padding:6px 10px; font-size:11px; font-weight:700; cursor:pointer;">Salir</button>
+        </div>` : ""}
         <div class="card" style="display:flex; align-items:center; gap:12px;">
           ${u.foto ? `<img src="${u.foto}" width="48" height="48" style="border-radius:999px; object-fit:cover;" alt="" />` : `<div style="width:48px;height:48px;border-radius:999px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center;">${svg('user',22,'var(--primary)')}</div>`}
           <div>
@@ -1970,7 +2037,7 @@ function screenPerfilCliente(){
           ${estadoNotificaciones()}
         </div>
 
-        <button class="btn-outline" style="margin-top:24px; border-color:#D64545; color:#D64545;" onclick="cerrarSesion()">CERRAR SESIÓN</button>
+        ${state.previsualizarModoCliente ? "" : `<button class="btn-outline" style="margin-top:24px; border-color:#D64545; color:#D64545;" onclick="cerrarSesion()">CERRAR SESIÓN</button>`}
       </div>
       ${bottomNav("home")}
     </div>`;
@@ -2381,7 +2448,8 @@ async function compartirAccesoCliente(clienteId){
     }
   }
   const negocioNombre = state.perfil.negocioNombre || "AiresCare";
-  const mensaje = `Hola ${(cli.nombre||'').split(' ')[0]||''}, para que puedas ver el mantenimiento de tu(s) aire(s) acondicionado(s) directo desde tu celular:\n\n1. Entra a: ${MI_DOMINIO_APP}\n2. Inicia sesión con tu cuenta de Google\n3. Ingresa este código cuando te lo pida: ${cli.codigoAcceso}\n\n¡Así vas a ver el historial y los próximos mantenimientos, con avisos automáticos! — ${negocioNombre}`;
+  const linkConCodigo = `${MI_DOMINIO_APP}?codigo=${cli.codigoAcceso}`;
+  const mensaje = `Hola ${(cli.nombre||'').split(' ')[0]||''}, para que puedas ver el mantenimiento de tu(s) aire(s) acondicionado(s) directo desde tu celular:\n\n1. Abre este link: ${linkConCodigo}\n2. Inicia sesión con tu cuenta de Google\n\n¡Listo! Vas a ver el historial y los próximos mantenimientos, con avisos automáticos.\n(Si te pide un código, es: ${cli.codigoAcceso}) — ${negocioNombre}`;
   if(cli.telefono){
     window.open(linkWhatsApp(cli.telefono, mensaje), "_blank", "noopener");
   } else {
@@ -3593,7 +3661,7 @@ function render(){
     perfil: screenPerfil,
     adminPanel: screenAdminPanel
   };
-  const clienteVinculado = state.modoCliente && state.usuario && state.usuario.vinculadoA;
+  const clienteVinculado = (state.modoCliente && state.usuario && state.usuario.vinculadoA) || state.previsualizarModoCliente;
   const fn = clienteVinculado && (state.screen === "home" || state.screen === "perfil")
     ? { home: screenHomeCliente, perfil: screenPerfilCliente }[state.screen]
     : (map[state.screen] || (state.modoCliente ? screenIngresarCodigo : screenHome));
@@ -3660,7 +3728,8 @@ function updateSidebarActive(){
   const desktopTopRight = document.getElementById("desktopTopbarRight");
   if(desktopTopRight) desktopTopRight.style.display = esPantallaAuth ? "none" : "";
 
-  const nombreMostrado = state.modoCliente
+  const enModoCliente = state.modoCliente || state.previsualizarModoCliente;
+  const nombreMostrado = enModoCliente
     ? ((state.vistaCliente && state.vistaCliente.negocioNombre) || "AiresCare")
     : ((state.perfil && state.perfil.negocioNombre) || "AiresCare");
   const spanMobile = document.getElementById("mobileTopbarNombre");
@@ -3668,7 +3737,7 @@ function updateSidebarActive(){
   if(spanMobile) spanMobile.textContent = nombreMostrado;
   if(spanSidebar) spanSidebar.textContent = nombreMostrado;
 
-  const logoNegocio = state.modoCliente
+  const logoNegocio = enModoCliente
     ? (state.vistaCliente && state.vistaCliente.negocioLogo)
     : (state.perfil && state.perfil.negocioLogo);
   const logoMobile = document.getElementById("mobileTopbarLogoImg");
