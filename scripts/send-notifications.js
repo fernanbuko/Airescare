@@ -251,6 +251,7 @@ async function main() {
   const ahora = ahoraEcuador();
   const hoyISO = isoDeFecha(ahora);
   const mananaISO = sumarDias(hoyISO, 1);
+  const en5DiasISO = sumarDias(hoyISO, 5);
   const minutosAhora = ahora.getUTCHours() * 60 + ahora.getUTCMinutes();
 
   console.log(`Hora Ecuador: ${hoyISO} ${String(ahora.getUTCHours()).padStart(2,"0")}:${String(ahora.getUTCMinutes()).padStart(2,"0")}`);
@@ -264,13 +265,34 @@ async function main() {
   for (const doc of usuariosSnap.docs) {
     const uid = doc.id;
     const data = doc.data();
-    if (!data.equipos) continue;
+    if (!data.clientes && !data.equipos) continue;
 
     let equipos;
     try {
-      equipos = JSON.parse(data.equipos);
+      if (data.clientes) {
+        // Formato nuevo: clientes con equipos adentro. Se aplana a una
+        // lista simple de equipos (cada uno con los datos de su cliente
+        // pegados), igual que hace la app en el navegador.
+        const clientes = JSON.parse(data.clientes);
+        equipos = [];
+        (clientes || []).forEach((cli) => {
+          (cli.equipos || []).forEach((eq) => {
+            equipos.push({
+              ...eq,
+              cliente: cli.nombre || "",
+              telefono: cli.telefono || "",
+              direccion: cli.direccion || "",
+            });
+          });
+        });
+      } else {
+        // Formato viejo (cuentas que no han abierto la app desde la
+        // actualización): equipos sueltos, cada uno con su cliente ya
+        // pegado directamente.
+        equipos = JSON.parse(data.equipos);
+      }
     } catch (e) {
-      console.warn(`No se pudo leer equipos del usuario ${uid}`);
+      console.warn(`No se pudo leer los equipos del usuario ${uid}`);
       continue;
     }
 
@@ -283,6 +305,29 @@ async function main() {
       (eq.historial || []).forEach((h) => {
         if (h.realizado || !h.fecha) return;
         const iso = fechaDMYaISO(h.fecha);
+
+        if (h.autoProgramado) {
+          // Los mantenimientos que la app programa sola a 6 meses (cuando se
+          // marca uno anterior como realizado) usan un recordatorio distinto:
+          // 5 días antes, y el mismo día — nada de "mañana" ni "30 minutos".
+          if (iso === en5DiasISO) {
+            avisos.push({
+              eq,
+              clave: `${h.id}_${iso}_5dias`,
+              titulo: `En 5 días: mantenimiento de ${eq.nombre}`,
+              hora: h.hora,
+            });
+          }
+          if (iso === hoyISO) {
+            avisos.push({
+              eq,
+              clave: `${h.id}_${iso}_hoy`,
+              titulo: `Hoy: mantenimiento de ${eq.nombre}`,
+              hora: h.hora,
+            });
+          }
+          return;
+        }
 
         if (iso === mananaISO) {
           avisos.push({
