@@ -533,6 +533,27 @@ function flattenClientes(clientes){
 function saveEquipos(equiposIgnorado, subirNube){
   saveClientesDirecto(state.clientes, subirNube);
   state.equipos = flattenClientes(state.clientes);
+  if(subirNube !== false) actualizarVistasClientesVinculados();
+}
+
+async function actualizarVistasClientesVinculados(){
+  if(!db || !state.usuario || state.modoCliente) return;
+  const vinculados = (state.clientes || []).filter(c=>c.clienteUid);
+  if(vinculados.length === 0) return;
+  for(const cli of vinculados){
+    try{
+      await db.collection("usuarios").doc(cli.clienteUid).collection("vistaCliente").doc("datos").set({
+        negocioNombre: state.perfil.negocioNombre || "AiresCare",
+        negocioLogo: state.perfil.negocioLogo || "",
+        negocioTelefono: state.perfil.telefono || "",
+        cliente: { nombre: cli.nombre||"", telefono: cli.telefono||"", direccion: cli.direccion||"" },
+        equipos: cli.equipos || [],
+        actualizadoEn: Date.now()
+      });
+    }catch(e){
+      console.error(`No se pudo actualizar al instante la vista del cliente ${cli.clienteUid} (el robot lo hará más tarde):`, e);
+    }
+  }
 }
 
 function nextClienteId(){
