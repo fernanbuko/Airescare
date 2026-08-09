@@ -361,6 +361,15 @@ async function main() {
       if (eq.filtroLimpio) {
         const isoFiltro = fechaDMYaISO(eq.filtroLimpio);
         const diasFiltro = diasEntreISO(isoFiltro, hoyISO);
+        if (diasFiltro === FILTRO_FRECUENCIA_DIAS - 1) {
+          avisos.push({
+            eq,
+            clave: `${eq.id}_${isoFiltro}_filtro_manana`,
+            titulo: `Mañana toca limpiar el filtro de ${eq.nombre}`,
+            esFiltro: true,
+            diasFiltro,
+          });
+        }
         if (diasFiltro >= FILTRO_FRECUENCIA_DIAS) {
           avisos.push({
             eq,
@@ -387,7 +396,9 @@ async function main() {
       if (yaNotificado.has(clave)) continue;
 
       const cuerpo = esFiltro
-        ? `Han pasado ${diasFiltro} días desde la última limpieza${eq.cliente ? " · Cliente: " + eq.cliente : ""}`
+        ? (diasFiltro >= FILTRO_FRECUENCIA_DIAS
+          ? `Han pasado ${diasFiltro} días desde la última limpieza${eq.cliente ? " · Cliente: " + eq.cliente : ""}`
+          : `Se cumplen ${FILTRO_FRECUENCIA_DIAS} días desde la última limpieza${eq.cliente ? " · Cliente: " + eq.cliente : ""}`)
         : (eq.cliente
           ? `Cliente: ${eq.cliente}${eq.marca ? " · " + eq.marca : ""}${hora ? " · " + hora : ""}`
           : (eq.marca || "Revisa el detalle en la app"));
