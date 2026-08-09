@@ -2059,7 +2059,7 @@ function screenHomeCliente(){
               <div style="display:flex; justify-content:space-between; font-size:12.5px;">
                 <span style="color:var(--ink-soft);">Filtro</span>
                 <span style="font-weight:700; color:${filtro.estado==='sucio'?'#D64545':(filtro.estado==='porVencer'?'var(--warn)':'var(--mint)')};">
-                  ${filtro.estado==='sinDato' ? 'Sin dato' : filtro.estado==='sucio' ? `Toca limpiarlo (${filtro.dias} días)` : filtro.estado==='porVencer' ? `Pronto (${filtro.dias} días)` : 'Limpio'}
+                  ${filtro.estado==='sinDato' ? 'Sin dato' : filtro.estado==='sucio' ? `Toca limpiarlo (${filtro.dias} días de atraso)` : filtro.estado==='porVencer' ? `Pronto (faltan ${FILTRO_FRECUENCIA_DIAS - filtro.dias} días)` : `Limpio (faltan ${FILTRO_FRECUENCIA_DIAS - filtro.dias} días)`}
                 </span>
               </div>
             </div>
