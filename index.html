@@ -903,6 +903,34 @@ function fechaLarga(str){
 function nextId(){
   return state.equipos.reduce((max,e)=>Math.max(max,e.id),0) + 1;
 }
+function sumarMesesDMY(fechaStr, meses){
+  const d = parseDMY(fechaStr);
+  d.setMonth(d.getMonth() + meses);
+  const dd = String(d.getDate()).padStart(2,"0");
+  const mm = String(d.getMonth()+1).padStart(2,"0");
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+// Cuando un mantenimiento se marca como realizado, programa automáticamente
+// el siguiente a 6 meses (solo una vez por registro, usando la bandera
+// "siguienteProgramado" para no duplicarlo si se marca/desmarca varias veces).
+function programarSiguienteMantenimiento(eq, h){
+  if(h.siguienteProgramado) return;
+  h.siguienteProgramado = true;
+  eq.historial.unshift({
+    id: Date.now()+Math.random().toString(36).slice(2,7),
+    fecha: sumarMesesDMY(h.fecha, 6),
+    hora: h.hora || "",
+    tipo: h.tipo || "Mantenimiento Preventivo",
+    tecnico: "Sin asignar",
+    precio: null,
+    notas: "Programado automáticamente (6 meses después del mantenimiento anterior).",
+    realizado: false,
+    autoProgramado: true,
+    siguienteProgramado: false
+  });
+}
 
 /* ---------- Consumo eléctrico estimado ---------- */
 function parseBTU(capacidadStr){
@@ -2158,9 +2186,10 @@ function marcarRealizadoAgenda(equipoId, historialId){
   const h = eq.historial.find(x=>String(x.id)===String(historialId));
   if(!h) return;
   h.realizado = true;
+  programarSiguienteMantenimiento(eq, h);
   recalcularFechasEquipo(eq);
   saveEquipos(state.equipos);
-  showToast("Marcado como realizado");
+  showToast("Marcado como realizado · próximo en 6 meses programado");
   render();
 }
 
@@ -2473,6 +2502,7 @@ function guardarEdicionHistorial(){
   h.precio = precioRaw ? Number(precioRaw) : null;
   h.notas = notas || "Sin notas.";
   h.realizado = realizado;
+  if(realizado) programarSiguienteMantenimiento(eq, h);
 
   recalcularFechasEquipo(eq);
   saveEquipos(state.equipos);
