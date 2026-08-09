@@ -1007,6 +1007,52 @@ function cerrarSesion(){
   }, "Cerrar sesión", "primary");
 }
 
+function confirmarEliminarMiCuenta(){
+  if(state.usuario && ADMIN_UIDS.includes(state.usuario.uid)){
+    showToast("No podés eliminar la cuenta administradora principal");
+    return;
+  }
+  const mensaje = state.modoCliente
+    ? "Esto va a ELIMINAR PERMANENTEMENTE tu cuenta y el acceso al portal. Vas a dejar de ver el mantenimiento de tus equipos. Para confirmar, escribe ELIMINAR:"
+    : "Esto va a ELIMINAR PERMANENTEMENTE tu cuenta, todos tus clientes, equipos e historial. No se puede deshacer. Para confirmar, escribe ELIMINAR:";
+  showConfirm(mensaje, eliminarMiCuenta, "Eliminar mi cuenta", "danger", "ELIMINAR");
+}
+
+async function eliminarMiCuenta(){
+  if(!db || !auth || !state.usuario) return;
+  const uid = state.usuario.uid;
+  showToast("Eliminando tu cuenta...");
+  try{
+    const subcolecciones = ["notificaciones","tokens","solicitudesVinculacion","clientesVinculados","vistaCliente","admin","meta"];
+    for(const nombre of subcolecciones){
+      const snap = await db.collection("usuarios").doc(uid).collection(nombre).get();
+      const borrados = snap.docs.map(d=>d.ref.delete());
+      await Promise.all(borrados);
+    }
+    await db.collection("usuarios").doc(uid).delete();
+
+    try{
+      await auth.currentUser.delete();
+    }catch(e){
+      if(e && e.code === "auth/requires-recent-login"){
+        showToast("Por seguridad, inicia sesión de nuevo para confirmar la eliminación");
+        const provider = new firebase.auth.GoogleAuthProvider();
+        await auth.currentUser.reauthenticateWithPopup(provider);
+        await auth.currentUser.delete();
+      } else {
+        throw e;
+      }
+    }
+
+    try{ localStorage.removeItem(SESION_BACKUP_KEY); }catch(e){}
+    showToast("Cuenta eliminada");
+    // El propio cierre de sesión que provoca delete() dispara la pantalla de login sola.
+  }catch(e){
+    console.error("Error eliminando la cuenta:", e);
+    showToast("No se pudo eliminar la cuenta. Intenta de nuevo.");
+  }
+}
+
 const SESION_BACKUP_KEY = "airescare_ultima_sesion";
 let temporizadorSinSesion = null;
 
@@ -2037,7 +2083,8 @@ function screenPerfilCliente(){
           ${estadoNotificaciones()}
         </div>
 
-        ${state.previsualizarModoCliente ? "" : `<button class="btn-outline" style="margin-top:24px; border-color:#D64545; color:#D64545;" onclick="cerrarSesion()">CERRAR SESIÓN</button>`}
+        ${state.previsualizarModoCliente ? "" : `<button class="btn-outline" style="margin-top:24px; border-color:#D64545; color:#D64545;" onclick="cerrarSesion()">CERRAR SESIÓN</button>
+        <button style="width:100%; background:none; border:none; margin-top:12px; padding:6px; text-align:center; font-size:12px; color:#D64545; cursor:pointer;" onclick="confirmarEliminarMiCuenta()">Eliminar mi cuenta</button>`}
       </div>
       ${bottomNav("home")}
     </div>`;
@@ -3527,6 +3574,14 @@ function screenPerfil(){
           </div>
           <button class="btn-outline" style="margin-top:12px;" onclick="sincronizarDesdeNube()">SINCRONIZAR AHORA</button>
           <button style="width:100%; background:none; border:none; margin-top:10px; padding:6px; text-align:center; font-size:12.5px; color:#D64545; font-weight:700; cursor:pointer;" onclick="cerrarSesion()">Cerrar sesión</button>
+        </div>
+
+        <div style="margin-top:22px; font-size:12px; font-weight:700; color:#D64545; text-transform:uppercase; letter-spacing:.4px;">Zona de peligro</div>
+        <div class="card" style="margin-top:8px; border-color:#F3C6C6;">
+          <div style="font-size:12.5px; color:var(--ink-soft); line-height:1.5;">
+            Elimina tu cuenta y todos tus clientes, equipos e historial de forma permanente. No se puede deshacer.
+          </div>
+          <button class="btn-outline" style="margin-top:12px; border-color:#D64545; color:#D64545;" onclick="confirmarEliminarMiCuenta()">ELIMINAR MI CUENTA</button>
         </div>
 
         <div style="margin-top:22px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Datos personales</div>
