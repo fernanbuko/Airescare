@@ -1,0 +1,31 @@
+name: Vincular clientes
+
+on:
+  schedule:
+    # Cada 5 minutos como respaldo (por si cron-job.org fallara). El
+    # disparo principal, más rápido, viene de cron-job.org llamando
+    # workflow_dispatch cada 1-2 minutos.
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  vincular:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Instalar dependencias
+        working-directory: scripts
+        run: npm install
+
+      - name: Vincular clientes pendientes
+        working-directory: scripts
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node vincular-clientes.js
