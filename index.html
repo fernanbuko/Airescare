@@ -1206,6 +1206,7 @@ let state = {
   equipoSelId: null,
   lastSaved: null,
   historialFiltro: null,
+  historialFiltroCliente: null,
   historialFiltroAbierto: false,
   historialEditId: null,
   agendaYear: null,
@@ -1224,7 +1225,6 @@ let state = {
   adminUsuariosCargando: false,
   adminBloqueosSolicitados: {},
   adminEliminacionesSolicitadas: [],
-  adminFiltroDueno: "",
   notificaciones: [],
   notifNoLeidas: 0,
   modoCliente: false,
@@ -1694,11 +1694,6 @@ function screenAdminPanel(){
       </div>`;
   } else {
     const cuentas = panel.cuentas || [];
-    const tecnicos = cuentas.filter(c=>c.tipoCuenta!=='cliente');
-    const filtroDueno = state.adminFiltroDueno || "";
-    const cuentasFiltradas = filtroDueno
-      ? cuentas.filter(c => c.uid===filtroDueno || c.vinculadoAUid===filtroDueno)
-      : cuentas;
     contenido = `
       <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:14px;">
         Actualizado: ${panel.actualizadoEn ? new Date(panel.actualizadoEn).toLocaleString() : "—"}
@@ -1709,13 +1704,8 @@ function screenAdminPanel(){
           <div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">Cuentas registradas</div>
         </div>
       </div>
-      <label class="field-label" style="margin-top:0;">Filtrar por dueño (técnico)</label>
-      <select class="field-input" onchange="state.adminFiltroDueno=this.value; render();">
-        <option value="">Todos</option>
-        ${tecnicos.map(t=>`<option value="${t.uid}" ${filtroDueno===t.uid?'selected':''}>${(t.negocioNombre||t.nombre||t.correo||'Sin nombre').replace(/"/g,'')}</option>`).join("")}
-      </select>
-      <div style="font-weight:800; font-size:14.5px; margin-bottom:10px; margin-top:18px;">Cuentas registradas${filtroDueno ? ` (${cuentasFiltradas.length})` : ""}</div>
-      ${cuentasFiltradas.length === 0 ? `<div class="card" style="text-align:center; color:var(--ink-soft); font-size:13px; padding:24px;">Sin cuentas para este filtro.</div>` : cuentasFiltradas.map(c=>{
+      <div style="font-weight:800; font-size:14.5px; margin-bottom:10px;">Cuentas registradas</div>
+      ${cuentas.length === 0 ? `<div class="card" style="text-align:center; color:var(--ink-soft); font-size:13px; padding:24px;">Sin cuentas todavía.</div>` : cuentas.map(c=>{
         const bloqueadoEfectivo = bloqueosSolicitados[c.uid] !== undefined ? bloqueosSolicitados[c.uid] : c.bloqueado;
         const hayBloqueoPendiente = bloqueosSolicitados[c.uid] !== undefined;
         const hayEliminacionPendiente = eliminacionesSolicitadas.includes(c.uid);
@@ -3237,11 +3227,15 @@ function screenAgenda(){
 }
 
 function screenHistorial(){
-  const all = state.equipos.flatMap(eq=>eq.historial.map(h=>({...h, equipo:eq.nombre, equipoId:eq.id})))
+  const all = state.equipos.flatMap(eq=>eq.historial.map(h=>({...h, equipo:eq.nombre, equipoId:eq.id, clienteId:eq.clienteId, cliente:eq.cliente})))
     .sort((a,b)=>parseDMY(b.fecha)-parseDMY(a.fecha));
 
-  const filtro = state.historialFiltro;
-  const filtered = filtro ? all.filter(h=>h.equipoId===filtro) : all;
+  const filtroEquipo = state.historialFiltro;
+  const filtroCliente = state.historialFiltroCliente;
+  const filtered = all.filter(h=>
+    (!filtroEquipo || h.equipoId===filtroEquipo) &&
+    (!filtroCliente || h.clienteId===filtroCliente)
+  );
 
   const rows = filtered.map(h=>`
     <div class="card" style="display:flex; gap:10px; margin-bottom:10px; cursor:pointer;" onclick="verEquipoDesdeHistorial(${h.equipoId})">
@@ -3255,31 +3249,39 @@ function screenHistorial(){
             ${svg('chevronRight',16,'var(--ink-soft)')}
           </div>
         </div>
-        <div style="font-size:12px; color:var(--primary); font-weight:700; margin-top:2px;">${h.equipo} · ${h.tipo}${(h.precio!==undefined && h.precio!==null) ? ` · $${Number(h.precio).toFixed(2)}` : ""} ${h.realizado ? '' : '· <span style="color:var(--warn);">Pendiente</span>'}</div>
+        <div style="font-size:12px; color:var(--primary); font-weight:700; margin-top:2px;">${h.cliente ? h.cliente + ' · ' : ''}${h.equipo} · ${h.tipo}${(h.precio!==undefined && h.precio!==null) ? ` · $${Number(h.precio).toFixed(2)}` : ""} ${h.realizado ? '' : '· <span style="color:var(--warn);">Pendiente</span>'}</div>
         <div style="font-size:12px; color:var(--ink-soft); margin-top:4px;">Técnico: ${h.tecnico}</div>
         <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">Notas: ${h.notas}</div>
         ${h.realizado ? `<button onclick="event.stopPropagation(); verComprobante('${h.equipoId}','${h.id}')" style="margin-top:8px; background:var(--chip-bg); color:var(--primary); border:none; border-radius:8px; padding:7px 10px; font-size:11.5px; font-weight:700; cursor:pointer;">${svg('cash',12,'var(--primary)')} Ver comprobante</button>` : ""}
       </div>
     </div>`).join("");
 
-  const filtroOpts = `<option value="">Todos los equipos</option>` +
-    state.equipos.map(eq=>`<option value="${eq.id}" ${filtro===eq.id?'selected':''}>${eq.nombre}</option>`).join("");
+  const clientesConEquipos = state.clientes.filter(c=>(c.equipos||[]).length>0);
+  const filtroOptsCliente = `<option value="">Todos los clientes</option>` +
+    clientesConEquipos.map(c=>`<option value="${c.id}" ${filtroCliente===c.id?'selected':''}>${c.nombre}</option>`).join("");
+
+  const equiposDelClienteFiltrado = filtroCliente ? state.equipos.filter(eq=>eq.clienteId===filtroCliente) : state.equipos;
+  const filtroOptsEquipo = `<option value="">Todos los equipos</option>` +
+    equiposDelClienteFiltrado.map(eq=>`<option value="${eq.id}" ${filtroEquipo===eq.id?'selected':''}>${eq.cliente ? eq.cliente+' · ' : ''}${eq.nombre}</option>`).join("");
 
   const filtroBar = all.length ? `
-    <div style="padding:0 20px 12px;">
+    <div style="padding:0 20px 12px; display:flex; flex-direction:column; gap:8px;">
+      <select class="field-input" style="margin-top:0;" onchange="cambiarFiltroHistorialCliente(this.value)">
+        ${filtroOptsCliente}
+      </select>
       <select class="field-input" style="margin-top:0;" onchange="cambiarFiltroHistorial(this.value)">
-        ${filtroOpts}
+        ${filtroOptsEquipo}
       </select>
     </div>` : "";
 
   return `
     <div class="screen">
-      ${topBar("Historial de Mantenimientos","home", `<button class="iconbtn" onclick="toggleFiltroHistorial()">${svg('filter',18, filtro? 'var(--primary)':'var(--ink)')}</button>`)}
+      ${topBar("Historial de Mantenimientos","home", `<button class="iconbtn" onclick="toggleFiltroHistorial()">${svg('filter',18, (filtroEquipo||filtroCliente)? 'var(--primary)':'var(--ink)')}</button>`)}
       ${state.historialFiltroAbierto ? filtroBar : ""}
       <div class="scroll">${filtered.length ? rows : `
         <div style="display:flex; flex-direction:column; align-items:center; text-align:center; padding-top:60px;">
           ${svg('clock',36,'var(--ink-soft)')}
-          <div style="font-weight:700; font-size:14.5px; margin-top:14px;">${all.length? 'Sin registros para este equipo' : 'Sin registros todavía'}</div>
+          <div style="font-weight:700; font-size:14.5px; margin-top:14px;">${all.length? 'Sin registros para este filtro' : 'Sin registros todavía'}</div>
           <div style="font-size:12.5px; color:var(--ink-soft); margin-top:6px; max-width:240px;">
             ${all.length? 'Prueba cambiando el filtro de arriba.' : 'Aquí verás el historial una vez que registres tu primer mantenimiento.'}
           </div>
@@ -3295,6 +3297,12 @@ function toggleFiltroHistorial(){
 
 function cambiarFiltroHistorial(value){
   state.historialFiltro = value ? Number(value) : null;
+  render();
+}
+
+function cambiarFiltroHistorialCliente(value){
+  state.historialFiltroCliente = value ? Number(value) : null;
+  state.historialFiltro = null; // al cambiar de cliente, se limpia el filtro de equipo (podía ser de otro cliente)
   render();
 }
 
