@@ -2310,7 +2310,7 @@ function screenAgendar(){
       </div>`;
   }
   const eq0 = state.equipoSelId ? state.equipos.find(e=>e.id===state.equipoSelId) : state.equipos[0];
-  const fechaPrefill = state.prefillFecha || new Date().toISOString().slice(0,10);
+  const fechaPrefill = state.prefillFecha || isoHoy();
   state.prefillFecha = null;
   const opts = state.equipos.map(e=>`<option value="${e.id}" ${e.id===eq0.id?'selected':''}>${e.nombre} – ${e.marca}</option>`).join("");
   return `
@@ -2371,7 +2371,7 @@ function guardarMantenimiento(){
   const precioRaw = document.getElementById("f-precio").value;
   const precio = precioRaw ? Number(precioRaw) : null;
   const notas = document.getElementById("f-notas").value;
-  const hoyISO = new Date().toISOString().slice(0,10);
+  const hoyISO = isoHoy();
   const fecha = fechaISOaDMY(fechaISO || hoyISO);
 
   const hoy = new Date(); hoy.setHours(0,0,0,0);
