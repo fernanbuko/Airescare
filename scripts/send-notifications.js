@@ -306,27 +306,16 @@ async function main() {
         if (h.realizado || !h.fecha) return;
         const iso = fechaDMYaISO(h.fecha);
 
-        if (h.autoProgramado) {
-          // Los mantenimientos que la app programa sola a 6 meses (cuando se
-          // marca uno anterior como realizado) usan un recordatorio distinto:
-          // 5 días antes, y el mismo día — nada de "mañana" ni "30 minutos".
-          if (iso === en5DiasISO) {
-            avisos.push({
-              eq,
-              clave: `${h.id}_${iso}_5dias`,
-              titulo: `En 5 días: mantenimiento de ${eq.nombre}`,
-              hora: h.hora,
-            });
-          }
-          if (iso === hoyISO) {
-            avisos.push({
-              eq,
-              clave: `${h.id}_${iso}_hoy`,
-              titulo: `Hoy: mantenimiento de ${eq.nombre}`,
-              hora: h.hora,
-            });
-          }
-          return;
+        // Mismo recordatorio para mantenimientos programados a mano y para
+        // los que la app arma sola a 6 meses: 5 días antes, mañana (1 día
+        // antes), el mismo día, y 30 minutos antes si tiene hora.
+        if (iso === en5DiasISO) {
+          avisos.push({
+            eq,
+            clave: `${h.id}_${iso}_5dias`,
+            titulo: `En 5 días: mantenimiento de ${eq.nombre}`,
+            hora: h.hora,
+          });
         }
 
         if (iso === mananaISO) {
