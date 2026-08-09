@@ -332,6 +332,7 @@
       <button class="sidebar-link" data-solo-negocio="1" data-screen="historial" onclick="go('historial')"><span class="sb-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></span>Historial</button>
       <button class="sidebar-link" data-solo-negocio="1" data-screen="consejos" onclick="go('consejos')"><span class="sb-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 4 13c0-6 6-11 16-11-1 9-6 16-11 18z"/><path d="M4 20 15 9"/></svg></span>Consejos</button>
       <button class="sidebar-link" data-screen="perfil" onclick="go('perfil')"><span class="sb-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></span>Perfil</button>
+      <button id="sidebarLinkContacto" class="sidebar-link" data-screen="contacto" onclick="go('contacto')" style="display:none;"><span class="sb-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 4.5c1-1 2.3-1 3 .2l1.3 2.1c.5.8.3 1.8-.4 2.4l-1 .9c.6 1.8 2.2 3.4 4 4l.9-1c.6-.7 1.6-.9 2.4-.4l2.1 1.3c1.2.7 1.2 2 .2 3l-.9.9c-1 1-2.6 1.3-4.3.6-3-1.2-6.2-4.4-7.4-7.4-.7-1.7-.4-3.3.6-4.3z"/></svg></span>Contactar</button>
       <button id="sidebarLinkAdmin" class="sidebar-link" data-solo-negocio="1" data-screen="adminPanel" onclick="abrirPanelAdmin()" style="display:none;"><span class="sb-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>Administración</button>
     </div>
   </nav>
@@ -1553,10 +1554,17 @@ function activarVistaPreview(tipo){
 
 function bottomNav(active){
   if(state.modoCliente || state.previsualizarModoCliente){
-    return `<div class="bottomnav" style="grid-template-columns:1fr;">
+    const logoNegocio = state.vistaCliente && state.vistaCliente.negocioLogo;
+    return `<div class="bottomnav" style="grid-template-columns:1fr 1fr;">
       <button class="navbtn ${active==='home'?'active':''}" onclick="go('home')">
         ${svg('home',18, active==='home'?'var(--primary)':'var(--ink-soft)')}
         <span>Inicio</span>
+      </button>
+      <button class="navbtn ${active==='contacto'?'active':''}" onclick="go('contacto')">
+        ${logoNegocio
+          ? `<img src="${logoNegocio}" style="width:18px; height:18px; border-radius:5px; object-fit:cover; ${active==='contacto'?'':'opacity:.7;'}" alt="" />`
+          : svg('phone',18, active==='contacto'?'var(--primary)':'var(--ink-soft)')}
+        <span>Contactar</span>
       </button>
     </div>`;
   }
@@ -2006,6 +2014,35 @@ function screenNotificaciones(){
         </div>`}
       </div>
       ${bottomNav("home")}
+    </div>`;
+}
+
+function screenContactoCliente(){
+  const v = state.vistaCliente;
+  if(!v){
+    return `
+      <div class="screen" style="align-items:center; justify-content:center; display:flex; padding:20px;">
+        <div style="text-align:center; color:var(--ink-soft); font-size:13px;">Cargando...</div>
+        ${bottomNav("contacto")}
+      </div>`;
+  }
+  return `
+    <div class="screen">
+      ${topBar("Contactar","home")}
+      <div class="scroll" style="display:flex; flex-direction:column; align-items:center; text-align:center; padding-top:30px;">
+        ${v.negocioLogo ? `<img src="${v.negocioLogo}" width="84" height="84" style="border-radius:20px; object-fit:cover;" alt="" />` : `<div style="width:84px; height:84px; border-radius:20px; background:var(--chip-bg); display:flex; align-items:center; justify-content:center;">${svg('ac',36,'var(--primary)')}</div>`}
+        <div style="font-weight:800; font-size:19px; margin-top:16px;">${v.negocioNombre || "Tu técnico"}</div>
+        <div style="font-size:13px; color:var(--ink-soft); margin-top:6px; max-width:280px; line-height:1.5;">
+          ${v.negocioTelefono ? "Escríbeles o llámalos directo desde aquí." : "Todavía no registraron un teléfono de contacto."}
+        </div>
+
+        ${v.negocioTelefono ? `
+        <div style="display:flex; flex-direction:column; gap:10px; width:100%; max-width:320px; margin-top:26px;">
+          <a href="tel:${limpiarTelefono(v.negocioTelefono)}" style="text-decoration:none; display:flex; align-items:center; justify-content:center; gap:8px; background:var(--chip-bg); color:var(--primary); border-radius:12px; padding:13px; font-size:13.5px; font-weight:700;">${svg('phone',16,'var(--primary)')} Llamar</a>
+          <a href="${linkWhatsApp(v.negocioTelefono, `Hola, soy ${v.cliente && v.cliente.nombre ? v.cliente.nombre : 'tu cliente'} y quisiera contactarte sobre el mantenimiento de mi aire acondicionado.`)}" target="_blank" rel="noopener" style="text-decoration:none; display:flex; align-items:center; justify-content:center; gap:8px; background:#E4F6EF; color:var(--mint); border-radius:12px; padding:13px; font-size:13.5px; font-weight:700;">${svg('whatsapp',16,'var(--mint)')} WhatsApp</a>
+        </div>` : ""}
+      </div>
+      ${bottomNav("contacto")}
     </div>`;
 }
 
@@ -3744,8 +3781,8 @@ function render(){
     adminPanel: screenAdminPanel
   };
   const clienteVinculado = (state.modoCliente && state.usuario && state.usuario.vinculadoA) || state.previsualizarModoCliente;
-  const fn = clienteVinculado && (state.screen === "home" || state.screen === "perfil")
-    ? { home: screenHomeCliente, perfil: screenPerfilCliente }[state.screen]
+  const fn = clienteVinculado && (state.screen === "home" || state.screen === "perfil" || state.screen === "contacto")
+    ? { home: screenHomeCliente, perfil: screenPerfilCliente, contacto: screenContactoCliente }[state.screen]
     : (map[state.screen] || (state.modoCliente ? screenIngresarCodigo : screenHome));
   document.getElementById("app").innerHTML = fn();
   updateSidebarActive();
@@ -3790,6 +3827,7 @@ function updateSidebarActive(){
     historial:"historial", editarHistorial:"historial", comprobante:"historial",
     consejos:"consejos",
     perfil:"perfil",
+    contacto:"contacto",
     adminPanel:"adminPanel"
   }[state.screen] || "home";
   document.querySelectorAll(".sidebar-link").forEach(btn=>{
@@ -3802,6 +3840,8 @@ function updateSidebarActive(){
   });
   const ctaRegistrar = document.getElementById("sidebarCtaRegistrar");
   if(ctaRegistrar) ctaRegistrar.style.display = enModoClienteAhora ? "none" : "";
+  const linkContacto = document.getElementById("sidebarLinkContacto");
+  if(linkContacto) linkContacto.style.display = enModoClienteAhora ? "flex" : "none";
 
   const linkAdmin = document.getElementById("sidebarLinkAdmin");
   if(linkAdmin) linkAdmin.style.display = (esAdmin() && !enModoClienteAhora) ? "flex" : "none";
