@@ -1031,6 +1031,26 @@ async function eliminarMiCuenta(){
     }
     await db.collection("usuarios").doc(uid).delete();
 
+    // Se limpia la memoria local YA, apenas se borran los datos de la nube
+    // — antes de intentar borrar la sesión de Google. Así, aunque ese
+    // último paso fallara, la app no se queda con datos viejos que podría
+    // volver a subir por accidente la próxima vez que alguien inicie sesión.
+    try{
+      localStorage.removeItem(SESION_BACKUP_KEY);
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(STORAGE_KEY_EQUIPOS_VIEJO);
+      localStorage.removeItem(PERFIL_KEY);
+      localStorage.removeItem(NOTIF_LOG_KEY);
+    }catch(e){}
+    state.clientes = [];
+    state.equipos = [];
+    state.perfil = { nombre:"", correo:"", telefono:"", foto:"", negocioNombre:"", negocioLogo:"", onboardingCompletado:false };
+    state.notificaciones = [];
+    state.notifNoLeidas = 0;
+    state.usuario = null;
+    state.modoCliente = false;
+    state.vistaCliente = null;
+
     try{
       await auth.currentUser.delete();
     }catch(e){
@@ -1044,12 +1064,11 @@ async function eliminarMiCuenta(){
       }
     }
 
-    try{ localStorage.removeItem(SESION_BACKUP_KEY); }catch(e){}
     showToast("Cuenta eliminada");
     // El propio cierre de sesión que provoca delete() dispara la pantalla de login sola.
   }catch(e){
     console.error("Error eliminando la cuenta:", e);
-    showToast("No se pudo eliminar la cuenta. Intenta de nuevo.");
+    showToast("Tus datos ya se borraron. Si la sesión no se cerró sola, cierra sesión manualmente.");
   }
 }
 
@@ -2004,7 +2023,7 @@ function screenHomeCliente(){
   const equipos = v.equipos || [];
   return `
     <div class="screen">
-      <div class="scroll">
+      <div class="scroll" style="padding-top:16px;">
         ${state.previsualizarModoCliente ? `
         <div class="card" style="background:var(--chip-bg); border-color:var(--primary); display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:14px;">
           <span style="font-size:11.5px; color:var(--primary); font-weight:700;">👁️ Vista previa (datos de ejemplo)</span>
