@@ -343,6 +343,8 @@ async function actualizarPanelAdmin() {
         uid: usuarioRef.id,
         correo,
         bloqueado,
+        tipoCuenta: data.tipoCuenta === "cliente" ? "cliente" : "negocio",
+        vinculadoA: data.vinculadoA ? (data.vinculadoA.negocioNombre || "") : "",
         negocioNombre: perfil.negocioNombre || "",
         nombre: perfil.nombre || "",
         logo: perfil.negocioLogo || perfil.foto || "",
