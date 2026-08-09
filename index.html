@@ -1663,7 +1663,15 @@ function screenHome(){
       </div>`;
   }
 
-  const conProximo = eqs.filter(e=>e.proximo);
+  const conProximo = eqs.filter(e=>{
+    if(!e.proximo) return false;
+    // Los mantenimientos que la app programa sola a 6 meses no se muestran
+    // en Inicio hasta que falten 5 días o menos (para no llenar la
+    // pantalla con algo que todavía está muy lejos).
+    const entrada = (e.historial||[]).find(h=>!h.realizado && h.fecha===e.proximo);
+    if(entrada && entrada.autoProgramado && diasRestantes(e.proximo) > 5) return false;
+    return true;
+  });
   const proximos = [...conProximo].sort((a,b)=>diasRestantes(a.proximo)-diasRestantes(b.proximo)).slice(0,5);
 
   return `
