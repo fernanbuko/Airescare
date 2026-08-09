@@ -324,10 +324,10 @@
       </div>
       <span id="sidebarLogoNombre">AiresCare</span>
     </button>
-    <button class="sidebar-cta" onclick="go('agregarEquipo')">+ Registrar equipo</button>
+    <button class="sidebar-cta" onclick="go('agregarCliente')">+ Registrar cliente</button>
     <div class="sidebar-nav">
       <button class="sidebar-link" data-screen="home" onclick="go('home')"><span class="sb-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/></svg></span>Inicio</button>
-      <button class="sidebar-link" data-screen="equipos" onclick="go('equipos')"><span class="sb-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h11a3 3 0 1 0-3-3"/><path d="M2 13h15a3 3 0 1 1-3 3"/><path d="M4 18h9a2.5 2.5 0 1 0-2.5-2.5"/></svg></span>Mis Equipos</button>
+      <button class="sidebar-link" data-screen="equipos" onclick="go('equipos')"><span class="sb-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h11a3 3 0 1 0-3-3"/><path d="M2 13h15a3 3 0 1 1-3 3"/><path d="M4 18h9a2.5 2.5 0 1 0-2.5-2.5"/></svg></span>Mis Clientes</button>
       <button class="sidebar-link" data-screen="agenda" onclick="go('agenda')"><span class="sb-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/></svg></span>Agenda</button>
       <button class="sidebar-link" data-screen="historial" onclick="go('historial')"><span class="sb-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></span>Historial</button>
       <button class="sidebar-link" data-screen="consejos" onclick="go('consejos')"><span class="sb-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 4 13c0-6 6-11 16-11-1 9-6 16-11 18z"/><path d="M4 20 15 9"/></svg></span>Consejos</button>
@@ -400,7 +400,6 @@ function acHero(maxWidth=210){
 
 /* ---------- Datos ---------- */
 // La app arranca sin equipos registrados: el usuario los agrega desde cero.
-const DEFAULT_EQUIPOS = [];
 
 const CONSEJOS = [
   {icon:"filter", img:"consejo-filtro.png", text:"Limpia los filtros cada 2 semanas para un mejor rendimiento."},
@@ -410,35 +409,132 @@ const CONSEJOS = [
 ];
 
 /* ---------- Estado / almacenamiento ---------- */
-const STORAGE_KEY = "airescare_equipos_v2";
-function loadEquipos(){
-  let equipos;
+const DEFAULT_CLIENTES = [];
+const STORAGE_KEY = "airescare_clientes_v1";
+const STORAGE_KEY_EQUIPOS_VIEJO = "airescare_equipos_v2";
+
+// Agrupa una lista "plana" de equipos (formato viejo, con cliente/telefono/
+// direccion pegados a cada equipo) en Clientes con sus equipos adentro.
+// Se agrupan por nombre+telefono; si un equipo no tiene cliente asignado,
+// se le crea su propio cliente en blanco (para no mezclar equipos de
+// dueños distintos por error).
+function agruparEquiposEnClientes(equiposViejos){
+  const grupos = {};
+  let siguienteId = 1;
+  const clientes = [];
+  (equiposViejos||[]).forEach(eq=>{
+    const clave = ((eq.cliente||"").trim().toLowerCase() + "|" + (eq.telefono||"").trim()).replace(/^\|$/,"");
+    const equipoLimpio = { ...eq };
+    delete equipoLimpio.cliente;
+    delete equipoLimpio.telefono;
+    delete equipoLimpio.direccion;
+    delete equipoLimpio.lat;
+    delete equipoLimpio.lng;
+    if(clave && grupos[clave]){
+      grupos[clave].equipos.push(equipoLimpio);
+      return;
+    }
+    const nuevoCliente = {
+      id: siguienteId++,
+      nombre: eq.cliente || "",
+      telefono: eq.telefono || "",
+      direccion: eq.direccion || "",
+      lat: eq.lat != null ? eq.lat : null,
+      lng: eq.lng != null ? eq.lng : null,
+      equipos: [equipoLimpio]
+    };
+    if(clave) grupos[clave] = nuevoCliente;
+    clientes.push(nuevoCliente);
+  });
+  return clientes;
+}
+
+function loadClientes(){
+  let clientes;
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
-    equipos = raw ? JSON.parse(raw) : JSON.parse(JSON.stringify(DEFAULT_EQUIPOS));
+    if(raw){
+      clientes = JSON.parse(raw);
+    } else {
+      // Todavía no existe en el formato nuevo: revisamos si hay datos
+      // guardados en el formato viejo (equipos sueltos) para migrarlos.
+      const rawViejo = localStorage.getItem(STORAGE_KEY_EQUIPOS_VIEJO);
+      const equiposViejos = rawViejo ? JSON.parse(rawViejo) : JSON.parse(JSON.stringify(DEFAULT_CLIENTES));
+      clientes = agruparEquiposEnClientes(equiposViejos);
+    }
   }catch(e){
-    equipos = JSON.parse(JSON.stringify(DEFAULT_EQUIPOS));
+    clientes = JSON.parse(JSON.stringify(DEFAULT_CLIENTES));
   }
-  // Migracion: asegurar que cada entrada de historial tenga un id unico
-  // y un estado realizado/pendiente (fechas pasadas = ya hecho, hoy/futuro = pendiente)
+
+  // Migracion: asegurar ids unicos en clientes y equipos, y que cada
+  // entrada de historial tenga id y estado realizado/pendiente.
   let changed = false;
+  let siguienteClienteId = clientes.reduce((max,c)=>Math.max(max, c.id||0), 0) + 1;
+  let siguienteEquipoId = clientes.reduce((max,c)=>Math.max(max, ...(c.equipos||[]).map(e=>e.id||0), max), 0) + 1;
   const hoy = new Date(); hoy.setHours(0,0,0,0);
-  equipos.forEach(eq=>{
-    (eq.historial||[]).forEach(h=>{
-      if(!h.id){ h.id = Date.now()+Math.random().toString(36).slice(2,7); changed = true; }
-      if(h.realizado===undefined){
-        const [d,m,y] = h.fecha.split("/").map(Number);
-        h.realizado = new Date(y,m-1,d) < hoy;
-        changed = true;
-      }
+  clientes.forEach(cli=>{
+    if(!cli.id){ cli.id = siguienteClienteId++; changed = true; }
+    if(!Array.isArray(cli.equipos)) cli.equipos = [];
+    cli.equipos.forEach(eq=>{
+      if(!eq.id){ eq.id = siguienteEquipoId++; changed = true; }
+      (eq.historial||[]).forEach(h=>{
+        if(!h.id){ h.id = Date.now()+Math.random().toString(36).slice(2,7); changed = true; }
+        if(h.realizado===undefined){
+          const [d,m,y] = h.fecha.split("/").map(Number);
+          h.realizado = new Date(y,m-1,d) < hoy;
+          changed = true;
+        }
+      });
     });
   });
-  if(changed) saveEquipos(equipos);
-  return equipos;
+  if(changed) saveClientesDirecto(clientes, false);
+  return clientes;
 }
-function saveEquipos(equipos, subirNube){
-  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(equipos)); }catch(e){}
+
+// Guarda la lista de clientes tal cual (sin pasar por state.equipos) —
+// la usan la migración inicial y saveEquipos() más abajo.
+function saveClientesDirecto(clientes, subirNube){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(clientes)); }catch(e){}
   if(subirNube !== false) programarSubidaNube();
+}
+
+// Convierte los Clientes (con equipos adentro) en una lista PLANA de
+// equipos, cada uno con los datos de su cliente "pegados" — así el resto
+// de la app (Agenda, Historial, Comprobante, WhatsApp, etc.) casi no tuvo
+// que cambiar: siguen leyendo eq.cliente/eq.telefono/eq.direccion como
+// siempre, solo que ahora es un espejo de los datos reales del Cliente.
+// IMPORTANTE: no se clonan los equipos — son la MISMA referencia que
+// vive dentro de cliente.equipos, así que cualquier cambio hecho sobre un
+// elemento de state.equipos (ej. eq.historial.push(...)) se refleja solo
+// en state.clientes también.
+function flattenClientes(clientes){
+  const flat = [];
+  (clientes||[]).forEach(cli=>{
+    (cli.equipos||[]).forEach(eq=>{
+      eq.clienteId = cli.id;
+      eq.cliente = cli.nombre || "";
+      eq.telefono = cli.telefono || "";
+      eq.direccion = cli.direccion || "";
+      eq.lat = cli.lat != null ? cli.lat : null;
+      eq.lng = cli.lng != null ? cli.lng : null;
+      flat.push(eq);
+    });
+  });
+  return flat;
+}
+
+// Se mantiene el mismo nombre/firma que antes a propósito: así ninguno de
+// los ~40 lugares que ya hacían "saveEquipos(state.equipos)" después de
+// modificar un equipo tuvo que tocarse — el guardado real ahora es de
+// state.clientes (la fuente de verdad), y esto además refresca
+// state.equipos con datos frescos.
+function saveEquipos(equiposIgnorado, subirNube){
+  saveClientesDirecto(state.clientes, subirNube);
+  state.equipos = flattenClientes(state.clientes);
+}
+
+function nextClienteId(){
+  return state.clientes.reduce((max,c)=>Math.max(max,c.id),0) + 1;
 }
 
 const PERFIL_KEY = "airescare_perfil_v1";
@@ -680,7 +776,7 @@ async function subirANube(){
   estadoSync = "syncing";
   try{
     await docUsuario().set({
-      equipos: JSON.stringify(state.equipos),
+      clientes: JSON.stringify(state.clientes),
       perfil: JSON.stringify(state.perfil),
       nombre: state.usuario.nombre || "",
       correo: state.usuario.correo || "",
@@ -709,7 +805,14 @@ async function sincronizarDesdeNube(){
         manejarBloqueo();
         return false;
       }
-      if(data.equipos){ state.equipos = JSON.parse(data.equipos); saveEquipos(state.equipos, false); }
+      if(data.clientes){
+        state.clientes = JSON.parse(data.clientes);
+        saveEquipos(null, false);
+      } else if(data.equipos){
+        // Cuenta que todavía tenía el formato viejo (equipos sueltos) guardado en la nube
+        state.clientes = agruparEquiposEnClientes(JSON.parse(data.equipos));
+        saveEquipos(null, false);
+      }
       if(data.perfil){ state.perfil = JSON.parse(data.perfil); savePerfil(state.perfil, false); }
       estadoSync = "ok";
       ultimaSyncFecha = new Date();
@@ -846,7 +949,8 @@ function alternarTema(){
 
 let state = {
   screen: "cargando",
-  equipos: loadEquipos(),
+  clientes: loadClientes(),
+  equipos: [], // se llena abajo, justo después, con flattenClientes()
   perfil: loadPerfil(),
   tema: loadTheme(),
   equipoSelId: null,
@@ -863,6 +967,7 @@ let state = {
   equiposBusqueda: "",
   comprobanteEquipoId: null,
   comprobanteHistorialId: null,
+  clienteSelId: null,
   usuario: null,
   onboardingOmitido: false,
   adminPanel: null,
@@ -872,6 +977,7 @@ let state = {
   notificaciones: [],
   notifNoLeidas: 0
 };
+state.equipos = flattenClientes(state.clientes);
 
 function fechaISOaDMY(iso){
   const [y,m,d] = iso.split("-");
@@ -1049,14 +1155,14 @@ function initMapPickerIfNeeded(){
   }
   if(typeof L === "undefined") return;
 
-  if(state.screen === "agregarEquipo"){
-    crearMapPicker("ne", MAPA_DEFAULT.lat, MAPA_DEFAULT.lng, false);
-  } else if(state.screen === "editarEquipo"){
-    const eq = state.equipos.find(e=>e.id===state.equipoSelId);
-    const yaTieneUbicacion = !!(eq && eq.lat && eq.lng);
-    const lat = yaTieneUbicacion ? eq.lat : MAPA_DEFAULT.lat;
-    const lng = yaTieneUbicacion ? eq.lng : MAPA_DEFAULT.lng;
-    crearMapPicker("ee", lat, lng, yaTieneUbicacion);
+  if(state.screen === "agregarCliente"){
+    crearMapPicker("nc", MAPA_DEFAULT.lat, MAPA_DEFAULT.lng, false);
+  } else if(state.screen === "editarCliente"){
+    const cli = state.clientes.find(c=>c.id===state.clienteSelId);
+    const yaTieneUbicacion = !!(cli && cli.lat && cli.lng);
+    const lat = yaTieneUbicacion ? cli.lat : MAPA_DEFAULT.lat;
+    const lng = yaTieneUbicacion ? cli.lng : MAPA_DEFAULT.lng;
+    crearMapPicker("ec", lat, lng, yaTieneUbicacion);
   }
 }
 
@@ -1173,6 +1279,8 @@ function go(screen, replace){
 }
 function openEquipo(id){
   state.equipoSelId = id;
+  const eq = state.equipos.find(e=>e.id===id);
+  if(eq) state.clienteSelId = eq.clienteId;
   go("detalle");
 }
 
@@ -1188,14 +1296,14 @@ function topBar(title, showBack, rightHtml){
 function bottomNav(active){
   const items = [
     {key:"home", icon:"home", label:"Inicio"},
-    {key:"equipos", icon:"wind", label:"Equipos"},
+    {key:"equipos", icon:"user", label:"Clientes"},
     {key:"add", icon:"plus", label:""},
     {key:"agenda", icon:"calendarDays", label:"Agenda"},
     {key:"historial", icon:"clock", label:"Historial"}
   ];
   return `<div class="bottomnav">${items.map(it=>{
     if(it.key==="add"){
-      return `<button class="navbtn-add" onclick="go('agregarEquipo')">${svg('plus',20,'#fff')}</button>`;
+      return `<button class="navbtn-add" onclick="go('agregarCliente')">${svg('plus',20,'#fff')}</button>`;
     }
     const isActive = active===it.key;
     const target = it.key;
@@ -1544,11 +1652,11 @@ function screenHome(){
             ${acHero(230)}
           </div>
           <div class="card" style="margin-top:18px; text-align:center; padding:24px 16px;">
-            <div style="font-weight:700; font-size:14.5px;">Aún no tienes equipos registrados</div>
+            <div style="font-weight:700; font-size:14.5px;">Aún no tienes clientes registrados</div>
             <div style="font-size:12.5px; color:var(--ink-soft); margin-top:6px; line-height:1.4;">
-              Agrega la marca, capacidad y fecha de instalación para llevar el control de su mantenimiento.
+              Registra a tu primer cliente y su equipo para llevar el control de su mantenimiento.
             </div>
-            <button class="btn-primary" style="margin-top:16px;" onclick="go('agregarEquipo')">REGISTRAR MI PRIMER EQUIPO</button>
+            <button class="btn-primary" style="margin-top:16px;" onclick="go('agregarCliente')">REGISTRAR MI PRIMER CLIENTE</button>
           </div>
         </div>
         ${bottomNav("home")}
@@ -1585,7 +1693,7 @@ function screenHome(){
         }).join("")}` : `
         <div class="card" style="margin-top:18px;">
           <div style="font-size:13.5px; color:var(--ink-soft);">Ninguno de tus equipos tiene mantenimiento programado todavía.</div>
-          <button class="btn-primary" style="margin-top:14px;" onclick="go('equipos')">VER MIS EQUIPOS</button>
+          <button class="btn-primary" style="margin-top:14px;" onclick="go('equipos')">VER MIS CLIENTES</button>
         </div>`}
       </div>
       ${bottomNav("home")}
@@ -1593,33 +1701,30 @@ function screenHome(){
 }
 
 function screenEquipos(){
-  if(state.equipos.length === 0){
+  if(state.clientes.length === 0){
     return `
       <div class="screen">
-        ${topBar("Mis Equipos","home", `<div style="display:flex; gap:6px;"><button class="iconbtn" onclick="go('agenda')">${svg('calendarDays',20,'var(--ink)')}</button><button class="iconbtn" onclick="go('agregarEquipo')">${svg('plus',22,'var(--ink)')}</button></div>`)}
+        ${topBar("Mis Clientes","home", `<div style="display:flex; gap:6px;"><button class="iconbtn" onclick="go('agenda')">${svg('calendarDays',20,'var(--ink)')}</button><button class="iconbtn" onclick="go('agregarCliente')">${svg('plus',22,'var(--ink)')}</button></div>`)}
         <div class="scroll" style="display:flex; flex-direction:column; align-items:center; text-align:center; padding-top:60px;">
-          <div style="width:76px;height:76px;border-radius:20px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center; padding:12px;">
-            <img src="ac-unit.png" alt="" style="width:100%; height:100%; object-fit:contain;" />
+          <div style="width:76px;height:76px;border-radius:20px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center;">
+            ${svg('user',30,'var(--primary)')}
           </div>
-          <div style="font-weight:700; font-size:15px; margin-top:16px;">No tienes equipos registrados</div>
+          <div style="font-weight:700; font-size:15px; margin-top:16px;">No tienes clientes registrados</div>
           <div style="font-size:12.5px; color:var(--ink-soft); margin-top:6px; max-width:240px; line-height:1.4;">
-            Registra tu primer aire acondicionado para llevar el control de su mantenimiento.
+            Registra tu primer cliente para llevar el control de sus equipos y mantenimientos.
           </div>
-          <button class="btn-primary" style="margin-top:18px; max-width:220px;" onclick="go('agregarEquipo')">REGISTRAR EQUIPO</button>
+          <button class="btn-primary" style="margin-top:18px; max-width:220px;" onclick="go('agregarCliente')">REGISTRAR CLIENTE</button>
         </div>
         ${bottomNav("equipos")}
       </div>`;
   }
 
   const q = (state.equiposBusqueda || "").trim().toLowerCase();
-  const coincide = eq => !q || [eq.nombre, eq.cliente, eq.marca, eq.direccion, eq.telefono].some(v => (v||"").toLowerCase().includes(q));
-
-  const vista = state.vistaEquipos || "equipo";
-  const toggleBar = `
-    <div style="display:flex; gap:6px; background:var(--chip-bg); border-radius:12px; padding:4px; margin-bottom:14px;">
-      <button onclick="cambiarVistaEquipos('equipo')" style="flex:1; padding:8px 0; border:none; border-radius:9px; font-size:12.5px; font-weight:700; cursor:pointer; background:${vista==='equipo'?'#fff':'transparent'}; color:${vista==='equipo'?'var(--primary)':'var(--ink-soft)'}; box-shadow:${vista==='equipo'?'0 1px 3px rgba(11,42,69,0.12)':'none'};">Por equipo</button>
-      <button onclick="cambiarVistaEquipos('cliente')" style="flex:1; padding:8px 0; border:none; border-radius:9px; font-size:12.5px; font-weight:700; cursor:pointer; background:${vista==='cliente'?'#fff':'transparent'}; color:${vista==='cliente'?'var(--primary)':'var(--ink-soft)'}; box-shadow:${vista==='cliente'?'0 1px 3px rgba(11,42,69,0.12)':'none'};">Por cliente</button>
-    </div>`;
+  const coincide = c => {
+    if(!q) return true;
+    if([c.nombre, c.telefono, c.direccion].some(v => (v||"").toLowerCase().includes(q))) return true;
+    return (c.equipos||[]).some(eq => [eq.nombre, eq.marca].some(v => (v||"").toLowerCase().includes(q)));
+  };
 
   const buscadorHtml = `
     <div style="position:relative; margin-bottom:14px;">
@@ -1627,80 +1732,40 @@ function screenEquipos(){
       <div style="position:absolute; left:11px; top:50%; transform:translateY(-50%); pointer-events:none; color:var(--ink-soft);">${svg('search',16,'var(--ink-soft)')}</div>
     </div>`;
 
-  let contenido;
-  if(vista === "cliente"){
-    const grupos = {};
-    state.equipos.filter(coincide).forEach(eq=>{
-      const key = (eq.cliente||"").trim() || "__sin_cliente__";
-      if(!grupos[key]) grupos[key] = { nombre: key==="__sin_cliente__" ? "Sin cliente asignado" : eq.cliente, telefono:"", direccion:"", equipos:[] };
-      if(!grupos[key].telefono && eq.telefono) grupos[key].telefono = eq.telefono;
-      if(!grupos[key].direccion && eq.direccion) grupos[key].direccion = eq.direccion;
-      grupos[key].equipos.push(eq);
-    });
-    const listaGrupos = Object.values(grupos).sort((a,b)=> a.nombre==="Sin cliente asignado" ? 1 : b.nombre==="Sin cliente asignado" ? -1 : a.nombre.localeCompare(b.nombre));
+  const lista = state.clientes.filter(coincide).slice().sort((a,b)=>(a.nombre||"").localeCompare(b.nombre||""));
 
-    contenido = listaGrupos.length ? `<div class="grid-cards">${listaGrupos.map(g=>{
-      const tieneTelefono = !!limpiarTelefono(g.telefono);
-      return `
-      <div class="card">
-        <div style="font-weight:700; font-size:14.5px;">${g.nombre}</div>
-        ${g.direccion ? `<div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${g.direccion}</div>` : ""}
-        ${tieneTelefono ? `
-        <div style="display:flex; gap:8px; margin-top:10px;">
-          <a href="tel:${limpiarTelefono(g.telefono)}" style="flex:1; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:var(--chip-bg); color:var(--primary); border-radius:10px; padding:8px; font-size:12px; font-weight:700;">${svg('phone',13,'var(--primary)')} Llamar</a>
-          <a href="${linkWhatsApp(g.telefono, `Hola ${g.nombre.split(' ')[0]}, te escribimos de AiresCare.`)}" target="_blank" rel="noopener" style="flex:1; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:#E4F6EF; color:var(--mint); border-radius:10px; padding:8px; font-size:12px; font-weight:700;">${svg('whatsapp',13,'var(--mint)')} WhatsApp</a>
-        </div>` : ""}
-        <div style="margin-top:12px; border-top:1px solid var(--line); padding-top:10px; display:flex; flex-direction:column; gap:8px;">
-          ${g.equipos.map(eq=>`
-            <button onclick="openEquipo(${eq.id})" style="background:var(--app-bg); border:none; border-radius:10px; padding:9px 10px; text-align:left; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
-              <div>
-                <div style="font-size:12.5px; font-weight:700;">${eq.nombre}</div>
-                <div style="font-size:11px; color:var(--ink-soft);">${eq.marca}</div>
-              </div>
-              ${svg('chevronRight',15,'var(--ink-soft)')}
-            </button>`).join("")}
-        </div>
-      </div>`;
-    }).join("")}</div>` : `<div style="text-align:center; color:var(--ink-soft); font-size:13px; padding-top:40px;">Sin resultados.</div>`;
-  } else {
-    const equiposFiltrados = state.equipos.filter(coincide);
-    const rows = equiposFiltrados.map(eq=>{
-      const filtroSucio = estadoFiltro(eq).estado === "sucio";
-      return `<a class="equipo-row" href="javascript:void(0)" onclick="openEquipo(${eq.id})">
-        <div class="card" style="display:flex; gap:12px; margin-bottom:12px;">
-          <div class="equipo-icon" style="padding:10px;"><img src="ac-unit.png" alt="" style="width:100%; height:100%; object-fit:contain;" /></div>
-          <div style="flex:1;">
-            <div style="font-weight:700; font-size:14.5px;">${eq.nombre}${eq.cliente ? ` · ${eq.cliente}` : ""}</div>
-            <div style="font-size:12.5px; color:var(--ink-soft);">${eq.marca}</div>
-            <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">Instalado: ${eq.instalado}</div>
-            <div style="font-size:11.5px; color:var(--ink-soft);">Último mantenimiento: ${eq.ultimo || "Aún sin mantenimiento"}</div>
-            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
-              <div class="chip">${eq.proximo ? `Próximo: ${eq.proximo}` : "Sin mantenimiento programado"}</div>
-              ${filtroSucio ? `<div class="chip chip-warn">Filtro sucio</div>` : ""}
-            </div>
+  const filas = lista.map(c=>{
+    const equipos = c.equipos || [];
+    const algunFiltroSucio = equipos.some(eq=>estadoFiltro(eq).estado==="sucio");
+    const pendientes = equipos.filter(eq=>eq.proximo).sort((a,b)=>diasRestantes(a.proximo)-diasRestantes(b.proximo));
+    const proximo = pendientes[0];
+    return `
+    <button onclick="abrirDetalleCliente(${c.id})" style="text-align:left; width:100%; background:none; border:none; padding:0; display:block;">
+      <div class="card" style="display:flex; gap:12px; margin-bottom:12px;">
+        <div class="equipo-icon">${svg('user',22,'var(--primary)')}</div>
+        <div style="flex:1; min-width:0;">
+          <div style="font-weight:700; font-size:14.5px;">${c.nombre || "Sin nombre"}</div>
+          ${c.direccion ? `<div style="font-size:12px; color:var(--ink-soft); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${c.direccion}</div>` : ""}
+          <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">${equipos.length} equipo${equipos.length===1?'':'s'}</div>
+          <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
+            ${proximo ? `<div class="chip">Próximo: ${proximo.proximo}</div>` : ""}
+            ${algunFiltroSucio ? `<div class="chip chip-warn">Filtro sucio</div>` : ""}
           </div>
-          <div style="align-self:center;">${svg('chevronRight',18,'var(--ink-soft)')}</div>
         </div>
-      </a>`;
-    }).join("");
-    contenido = equiposFiltrados.length ? `<div class="grid-cards">${rows}</div>` : `<div style="text-align:center; color:var(--ink-soft); font-size:13px; padding-top:40px;">Sin resultados.</div>`;
-  }
+        <div style="align-self:center;">${svg('chevronRight',18,'var(--ink-soft)')}</div>
+      </div>
+    </button>`;
+  }).join("");
 
   return `
     <div class="screen">
-      ${topBar("Mis Equipos","home", `<div style="display:flex; gap:6px;"><button class="iconbtn" onclick="go('agenda')">${svg('calendarDays',20,'var(--ink)')}</button><button class="iconbtn" onclick="go('agregarEquipo')">${svg('plus',22,'var(--ink)')}</button></div>`)}
+      ${topBar("Mis Clientes","home", `<div style="display:flex; gap:6px;"><button class="iconbtn" onclick="go('agenda')">${svg('calendarDays',20,'var(--ink)')}</button><button class="iconbtn" onclick="go('agregarCliente')">${svg('plus',22,'var(--ink)')}</button></div>`)}
       <div class="scroll">
-        ${toggleBar}
         ${buscadorHtml}
-        ${contenido}
+        ${lista.length ? `<div class="grid-cards">${filas}</div>` : `<div style="text-align:center; color:var(--ink-soft); font-size:13px; padding-top:40px;">Sin resultados.</div>`}
       </div>
       ${bottomNav("equipos")}
     </div>`;
-}
-
-function cambiarVistaEquipos(v){
-  state.vistaEquipos = v;
-  render();
 }
 
 function buscarEquipos(valor){
@@ -1708,6 +1773,242 @@ function buscarEquipos(valor){
   render();
   const input = document.querySelector('.scroll input[type="text"]');
   if(input){ input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+}
+
+function abrirDetalleCliente(id){
+  state.clienteSelId = id;
+  go("detalleCliente");
+}
+
+function screenDetalleCliente(){
+  const cli = state.clientes.find(c=>c.id===state.clienteSelId);
+  if(!cli){
+    return `
+      <div class="screen">
+        ${topBar("Cliente","equipos")}
+        <div class="scroll" style="padding-top:60px; text-align:center; color:var(--ink-soft); font-size:13px;">No se encontró el cliente.</div>
+        ${bottomNav("equipos")}
+      </div>`;
+  }
+  const tieneTelefono = !!limpiarTelefono(cli.telefono);
+  const equipos = cli.equipos || [];
+  return `
+    <div class="screen">
+      ${topBar("Cliente","equipos", `<button class="iconbtn" onclick="go('editarCliente')">${svg('edit',19,'var(--ink)')}</button>`)}
+      <div class="scroll">
+        <div class="card">
+          <div style="font-weight:800; font-size:17px;">${cli.nombre || "Sin nombre"}</div>
+          ${cli.telefono ? `<div style="font-size:13px; color:var(--ink-soft); margin-top:4px;">${cli.telefono}</div>` : ""}
+          ${cli.direccion ? `<div style="font-size:13px; color:var(--ink-soft); margin-top:2px;">${cli.direccion}</div>` : ""}
+          ${(cli.lat && cli.lng) ? `<div style="font-size:11.5px; color:var(--mint); margin-top:4px; font-weight:700;">📍 Ubicación exacta guardada</div>` : ""}
+          <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
+            ${tieneTelefono ? `<a href="tel:${limpiarTelefono(cli.telefono)}" style="flex:1; min-width:100px; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:var(--chip-bg); color:var(--primary); border-radius:10px; padding:10px 8px; font-size:12.5px; font-weight:700;">${svg('phone',15,'var(--primary)')} Llamar</a>` : ""}
+            ${tieneTelefono ? `<a href="${linkWhatsApp(cli.telefono, `Hola ${(cli.nombre||'').split(' ')[0]||''}, te escribimos de AiresCare.`)}" target="_blank" rel="noopener" style="flex:1; min-width:100px; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:#E4F6EF; color:var(--mint); border-radius:10px; padding:10px 8px; font-size:12.5px; font-weight:700;">${svg('whatsapp',15,'var(--mint)')} WhatsApp</a>` : ""}
+            ${(cli.lat && cli.lng) ? `<a href="https://www.google.com/maps/search/?api=1&query=${cli.lat},${cli.lng}" target="_blank" rel="noopener" style="flex:1; min-width:100px; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:var(--chip-bg); color:var(--primary); border-radius:10px; padding:10px 8px; font-size:12.5px; font-weight:700;">${svg('mapPin',15,'var(--primary)')} Cómo llegar</a>` : (cli.direccion ? `<a href="https://maps.google.com/?q=${encodeURIComponent(cli.direccion)}" target="_blank" rel="noopener" style="flex:1; min-width:100px; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:var(--chip-bg); color:var(--primary); border-radius:10px; padding:10px 8px; font-size:12.5px; font-weight:700;">${svg('mapPin',15,'var(--primary)')} Cómo llegar</a>` : "")}
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px; margin-bottom:8px;">
+          <div style="font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Equipos (${equipos.length})</div>
+          <button onclick="go('agregarEquipo')" style="background:none; border:none; color:var(--primary); font-size:12.5px; font-weight:700; cursor:pointer;">+ Agregar equipo</button>
+        </div>
+        ${equipos.length===0 ? `<div class="card" style="text-align:center; color:var(--ink-soft); font-size:13px; padding:20px;">Sin equipos todavía.</div>` : equipos.map(eq=>{
+          const filtroSucio = estadoFiltro(eq).estado === "sucio";
+          return `
+          <button onclick="openEquipo(${eq.id})" style="width:100%; text-align:left; background:none; border:none; padding:0; display:block;">
+            <div class="card" style="display:flex; gap:12px; margin-bottom:10px;">
+              <div class="equipo-icon" style="padding:8px;"><img src="ac-unit.png" style="width:100%; height:100%; object-fit:contain;" alt="" /></div>
+              <div style="flex:1;">
+                <div style="font-weight:700; font-size:13.5px;">${eq.nombre}</div>
+                <div style="font-size:11.5px; color:var(--ink-soft);">${eq.marca}</div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;">
+                  <div class="chip">${eq.proximo ? `Próximo: ${eq.proximo}` : "Sin programar"}</div>
+                  ${filtroSucio ? `<div class="chip chip-warn">Filtro sucio</div>` : ""}
+                </div>
+              </div>
+              ${svg('chevronRight',16,'var(--ink-soft)')}
+            </div>
+          </button>`;
+        }).join("")}
+
+        <button class="btn-outline" style="margin-top:16px; margin-bottom:20px; border-color:#D64545; color:#D64545;" onclick="eliminarCliente()">ELIMINAR CLIENTE</button>
+      </div>
+      ${bottomNav("equipos")}
+    </div>`;
+}
+
+function screenAgregarCliente(){
+  return `
+    <div class="screen">
+      ${topBar("Registrar Cliente", state.clientes.length ? "equipos" : "home")}
+      <div class="scroll">
+        <div style="font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Datos del cliente</div>
+        <label class="field-label" style="margin-top:8px;">Nombre del cliente</label>
+        <input class="field-input" id="nc-nombre" type="text" placeholder="Ej: María Torres" />
+
+        <label class="field-label">Teléfono / WhatsApp</label>
+        <input class="field-input" id="nc-telefono" type="tel" placeholder="Ej: 0991234567" />
+
+        <label class="field-label">Dirección</label>
+        <input class="field-input" id="nc-direccion" type="text" placeholder="Ej: Av. Principal 123, Guayaquil" />
+
+        <label class="field-label">Ubicación exacta (opcional)</label>
+        <div class="map-picker" id="map-picker-nc"></div>
+        <div class="map-hint">Toca el mapa para colocar el pin exacto de la casa del cliente.</div>
+        <button type="button" class="btn-outline" style="margin-top:8px; padding:9px 0; font-size:12.5px;" onclick="usarUbicacionActual('nc')">${svg('mapPin',14,'var(--primary)')} Usar mi ubicación actual</button>
+
+        <div style="font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px; margin-top:24px;">Datos del equipo</div>
+        <label class="field-label" style="margin-top:8px;">Nombre / Ubicación</label>
+        <input class="field-input" id="ne-nombre" type="text" placeholder="Ej: Sala, Dormitorio, Oficina" />
+
+        <label class="field-label">Marca y modelo</label>
+        <input class="field-input" id="ne-marca" type="text" placeholder="Ej: LG Inverter 12k BTU" />
+
+        <label class="field-label">Capacidad</label>
+        <input class="field-input" id="ne-capacidad" type="text" placeholder="Ej: 12,000 BTU" />
+
+        <label class="field-label">Tipo de compresor</label>
+        <select class="field-input" id="ne-tipo">
+          <option value="">Detectar automáticamente</option>
+          <option value="inverter">Inverter</option>
+          <option value="convencional">Convencional (on/off)</option>
+        </select>
+
+        <label class="field-label">Fecha de instalación</label>
+        <input class="field-input" id="ne-instalado" type="date" />
+
+        <label class="field-label">Horas de uso al día (aprox.)</label>
+        <input class="field-input" id="ne-horas" type="number" min="0" max="24" step="0.5" placeholder="Ej: 8" />
+
+        <label class="field-label">Última limpieza de filtro (opcional)</label>
+        <input class="field-input" id="ne-filtro" type="date" />
+
+        <button class="btn-primary" style="margin-top:20px; margin-bottom:20px;" onclick="registrarCliente()">GUARDAR CLIENTE Y EQUIPO</button>
+      </div>
+      ${bottomNav("equipos")}
+    </div>`;
+}
+
+function registrarCliente(){
+  const nombre = document.getElementById("nc-nombre").value.trim();
+  const telefono = document.getElementById("nc-telefono").value.trim();
+  const direccion = document.getElementById("nc-direccion").value.trim();
+
+  if(!nombre){
+    showToast("Ponle un nombre al cliente");
+    return;
+  }
+
+  const nombreEquipo = document.getElementById("ne-nombre").value.trim();
+  if(!nombreEquipo){
+    showToast("Ponle un nombre al equipo (ej: Sala)");
+    return;
+  }
+  const marca = document.getElementById("ne-marca").value.trim();
+  const capacidad = document.getElementById("ne-capacidad").value.trim();
+  const instaladoISO = document.getElementById("ne-instalado").value;
+  const horasRaw = document.getElementById("ne-horas").value;
+  const filtroISO = document.getElementById("ne-filtro").value;
+  const tipoCompresor = document.getElementById("ne-tipo").value || null;
+
+  const coords = obtenerCoordenadasPicker();
+  const nuevoEquipo = {
+    id: nextId(),
+    nombre: nombreEquipo,
+    marca: marca || "Sin especificar",
+    capacidad: capacidad || "Sin especificar",
+    instalado: instaladoISO ? fechaISOaDMY(instaladoISO) : "-",
+    horasUso: horasRaw !== "" ? Number(horasRaw) : null,
+    filtroLimpio: filtroISO ? fechaISOaDMY(filtroISO) : null,
+    tipoCompresor,
+    ultimo: null,
+    proximo: null,
+    estado: "Activo",
+    historial: []
+  };
+
+  const nuevoCliente = {
+    id: nextClienteId(),
+    nombre,
+    telefono: telefono || "",
+    direccion: direccion || "",
+    lat: coords ? coords.lat : null,
+    lng: coords ? coords.lng : null,
+    equipos: [nuevoEquipo]
+  };
+  state.clientes.push(nuevoCliente);
+  saveEquipos(null);
+  state.clienteSelId = nuevoCliente.id;
+  state.equipoSelId = nuevoEquipo.id;
+  showToast("Cliente y equipo registrados");
+  go("detalle");
+}
+
+function screenEditarCliente(){
+  const cli = state.clientes.find(c=>c.id===state.clienteSelId);
+  if(!cli){
+    return `
+      <div class="screen">
+        ${topBar("Editar Cliente","equipos")}
+        <div class="scroll" style="padding-top:60px; text-align:center; color:var(--ink-soft); font-size:13px;">No se encontró el cliente.</div>
+        ${bottomNav("equipos")}
+      </div>`;
+  }
+  return `
+    <div class="screen">
+      ${topBar("Editar Cliente","detalleCliente")}
+      <div class="scroll">
+        <label class="field-label" style="margin-top:0;">Nombre del cliente</label>
+        <input class="field-input" id="ec-nombre" type="text" value="${cli.nombre||""}" placeholder="Ej: María Torres" />
+
+        <label class="field-label">Teléfono / WhatsApp</label>
+        <input class="field-input" id="ec-telefono" type="tel" value="${cli.telefono||""}" placeholder="Ej: 0991234567" />
+
+        <label class="field-label">Dirección</label>
+        <input class="field-input" id="ec-direccion" type="text" value="${cli.direccion||""}" placeholder="Ej: Av. Principal 123, Guayaquil" />
+
+        <label class="field-label">Ubicación exacta (opcional)</label>
+        <div class="map-picker" id="map-picker-ec"></div>
+        <div class="map-hint">Toca el mapa para ajustar el pin exacto de la casa del cliente.</div>
+        <button type="button" class="btn-outline" style="margin-top:8px; padding:9px 0; font-size:12.5px;" onclick="usarUbicacionActual('ec')">${svg('mapPin',14,'var(--primary)')} Usar mi ubicación actual</button>
+
+        <button class="btn-primary" style="margin-top:20px; margin-bottom:20px;" onclick="guardarEdicionCliente()">GUARDAR CAMBIOS</button>
+      </div>
+      ${bottomNav("equipos")}
+    </div>`;
+}
+
+function guardarEdicionCliente(){
+  const cli = state.clientes.find(c=>c.id===state.clienteSelId);
+  if(!cli) return;
+  const nombre = document.getElementById("ec-nombre").value.trim();
+  if(!nombre){
+    showToast("Ponle un nombre al cliente");
+    return;
+  }
+  cli.nombre = nombre;
+  cli.telefono = document.getElementById("ec-telefono").value.trim();
+  cli.direccion = document.getElementById("ec-direccion").value.trim();
+  const coords = obtenerCoordenadasPicker();
+  if(coords){ cli.lat = coords.lat; cli.lng = coords.lng; }
+  saveEquipos(null);
+  showToast("Cambios guardados");
+  go("detalleCliente");
+}
+
+function eliminarCliente(){
+  const cli = state.clientes.find(c=>c.id===state.clienteSelId);
+  if(!cli) return;
+  const n = (cli.equipos||[]).length;
+  showConfirm(
+    `¿Eliminar a "${cli.nombre||'este cliente'}"${n>0 ? ` y su${n===1?'':'s'} ${n} equipo${n===1?'':'s'} con todo su historial` : ''}? Esta acción no se puede deshacer.`,
+    () => {
+      state.clientes = state.clientes.filter(c=>c.id!==cli.id);
+      saveEquipos(null);
+      showToast("Cliente eliminado");
+      go("equipos");
+    }
+  );
 }
 
 function screenDetalle(){
@@ -1722,8 +2023,11 @@ function screenDetalle(){
   ];
   const tieneTelefono = !!limpiarTelefono(eq.telefono);
   const clienteCard = (eq.cliente || eq.telefono || eq.direccion || (eq.lat && eq.lng)) ? `
-    <div style="margin-top:20px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Cliente</div>
-    <div class="card" style="margin-top:8px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px; margin-bottom:8px;">
+      <div style="font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Cliente</div>
+      <button onclick="abrirDetalleCliente(${eq.clienteId})" style="background:none; border:none; color:var(--primary); font-size:12px; font-weight:700; cursor:pointer;">Ver cliente</button>
+    </div>
+    <div class="card">
       ${eq.cliente ? `<div style="font-weight:700; font-size:14.5px;">${eq.cliente}</div>` : ""}
       ${eq.telefono ? `<div style="font-size:12.5px; color:var(--ink-soft); margin-top:2px;">${eq.telefono}</div>` : ""}
       ${eq.direccion ? `<div style="font-size:12.5px; color:var(--ink-soft); margin-top:2px;">${eq.direccion}</div>` : ""}
@@ -1737,7 +2041,7 @@ function screenDetalle(){
     <div style="margin-top:20px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Cliente</div>
     <div class="card" style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
       <span style="font-size:12.5px; color:var(--ink-soft);">Sin datos de contacto registrados</span>
-      <button class="iconbtn" onclick="go('editarEquipo')">${svg('edit',16,'var(--primary)')}</button>
+      <button class="iconbtn" onclick="abrirDetalleCliente(${eq.clienteId})">${svg('edit',16,'var(--primary)')}</button>
     </div>`;
 
   const filtro = estadoFiltro(eq);
@@ -1794,7 +2098,7 @@ function screenDetalle(){
 
   return `
     <div class="screen">
-      ${topBar("Detalle del Equipo","equipos", `<button class="iconbtn" onclick="go('editarEquipo')">${svg('edit',19,'var(--ink)')}</button>`)}
+      ${topBar("Detalle del Equipo","detalleCliente", `<button class="iconbtn" onclick="go('editarEquipo')">${svg('edit',19,'var(--ink)')}</button>`)}
       <div class="scroll">
         <div style="display:flex; gap:14px; align-items:center;">
           <div style="width:96px;height:96px;border-radius:20px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center; padding:14px; flex-shrink:0;">
@@ -1827,27 +2131,25 @@ function screenDetalle(){
 }
 
 function screenAgregarEquipo(){
+  const cli = state.clientes.find(c=>c.id===state.clienteSelId);
+  if(!cli){
+    return `
+      <div class="screen">
+        ${topBar("Registrar Equipo","equipos")}
+        <div class="scroll" style="padding-top:60px; text-align:center; color:var(--ink-soft); font-size:13px;">No se encontró el cliente.</div>
+        ${bottomNav("equipos")}
+      </div>`;
+  }
   return `
     <div class="screen">
-      ${topBar("Registrar Equipo", state.equipos.length ? "equipos" : "home")}
+      ${topBar("Registrar Equipo","detalleCliente")}
       <div class="scroll">
-        <div style="font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Datos del cliente</div>
-        <label class="field-label" style="margin-top:8px;">Nombre del cliente</label>
-        <input class="field-input" id="ne-cliente" type="text" placeholder="Ej: María Torres" />
+        <div class="card" style="margin-bottom:18px;">
+          <div style="font-size:11px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Para el cliente</div>
+          <div style="font-weight:700; font-size:14.5px; margin-top:2px;">${cli.nombre || "Sin nombre"}</div>
+        </div>
 
-        <label class="field-label">Teléfono / WhatsApp</label>
-        <input class="field-input" id="ne-telefono" type="tel" placeholder="Ej: 0991234567" />
-
-        <label class="field-label">Dirección</label>
-        <input class="field-input" id="ne-direccion" type="text" placeholder="Ej: Av. Principal 123, Guayaquil" />
-
-        <label class="field-label">Ubicación exacta (opcional)</label>
-        <div class="map-picker" id="map-picker-ne"></div>
-        <div class="map-hint">Toca el mapa para colocar el pin exacto de la casa del cliente.</div>
-        <button type="button" class="btn-outline" style="margin-top:8px; padding:9px 0; font-size:12.5px;" onclick="usarUbicacionActual('ne')">${svg('mapPin',14,'var(--primary)')} Usar mi ubicación actual</button>
-
-        <div style="font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px; margin-top:22px;">Datos del equipo</div>
-        <label class="field-label" style="margin-top:8px;">Nombre / Ubicación</label>
+        <label class="field-label" style="margin-top:0;">Nombre / Ubicación</label>
         <input class="field-input" id="ne-nombre" type="text" placeholder="Ej: Sala, Dormitorio, Oficina" />
 
         <label class="field-label">Marca y modelo</label>
@@ -1879,9 +2181,9 @@ function screenAgregarEquipo(){
 }
 
 function registrarEquipo(){
-  const cliente = document.getElementById("ne-cliente").value.trim();
-  const telefono = document.getElementById("ne-telefono").value.trim();
-  const direccion = document.getElementById("ne-direccion").value.trim();
+  const cli = state.clientes.find(c=>c.id===state.clienteSelId);
+  if(!cli){ showToast("No se encontró el cliente"); return; }
+
   const nombre = document.getElementById("ne-nombre").value.trim();
   const marca = document.getElementById("ne-marca").value.trim();
   const capacidad = document.getElementById("ne-capacidad").value.trim();
@@ -1892,18 +2194,12 @@ function registrarEquipo(){
     return;
   }
 
-  const coords = obtenerCoordenadasPicker();
   const horasRaw = document.getElementById("ne-horas").value;
   const filtroISO = document.getElementById("ne-filtro").value;
   const tipoCompresor = document.getElementById("ne-tipo").value || null;
 
   const nuevo = {
     id: nextId(),
-    cliente: cliente || "",
-    telefono: telefono || "",
-    direccion: direccion || "",
-    lat: coords ? coords.lat : null,
-    lng: coords ? coords.lng : null,
     nombre,
     marca: marca || "Sin especificar",
     capacidad: capacidad || "Sin especificar",
@@ -1916,8 +2212,8 @@ function registrarEquipo(){
     estado: "Activo",
     historial: []
   };
-  state.equipos.push(nuevo);
-  saveEquipos(state.equipos);
+  cli.equipos.push(nuevo);
+  saveEquipos(null);
   state.equipoSelId = nuevo.id;
   showToast("Equipo registrado");
   go("detalle");
@@ -1929,23 +2225,7 @@ function screenEditarEquipo(){
     <div class="screen">
       ${topBar("Editar Equipo","detalle")}
       <div class="scroll">
-        <div style="font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Datos del cliente</div>
-        <label class="field-label" style="margin-top:8px;">Nombre del cliente</label>
-        <input class="field-input" id="ee-cliente" type="text" value="${eq.cliente||""}" placeholder="Ej: María Torres" />
-
-        <label class="field-label">Teléfono / WhatsApp</label>
-        <input class="field-input" id="ee-telefono" type="tel" value="${eq.telefono||""}" placeholder="Ej: 0991234567" />
-
-        <label class="field-label">Dirección</label>
-        <input class="field-input" id="ee-direccion" type="text" value="${eq.direccion||""}" placeholder="Ej: Av. Principal 123, Guayaquil" />
-
-        <label class="field-label">Ubicación exacta (opcional)</label>
-        <div class="map-picker" id="map-picker-ee"></div>
-        <div class="map-hint">Toca el mapa para ajustar el pin exacto de la casa del cliente.</div>
-        <button type="button" class="btn-outline" style="margin-top:8px; padding:9px 0; font-size:12.5px;" onclick="usarUbicacionActual('ee')">${svg('mapPin',14,'var(--primary)')} Usar mi ubicación actual</button>
-
-        <div style="font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px; margin-top:22px;">Datos del equipo</div>
-        <label class="field-label" style="margin-top:8px;">Nombre / Ubicación</label>
+        <label class="field-label" style="margin-top:0;">Nombre / Ubicación</label>
         <input class="field-input" id="ee-nombre" type="text" value="${eq.nombre||""}" placeholder="Ej: Sala, Dormitorio, Oficina" />
 
         <label class="field-label">Marca y modelo</label>
@@ -1980,9 +2260,6 @@ function screenEditarEquipo(){
 function guardarEdicionEquipo(){
   const eq = state.equipos.find(e=>e.id===state.equipoSelId);
   if(!eq) return;
-  const cliente = document.getElementById("ee-cliente").value.trim();
-  const telefono = document.getElementById("ee-telefono").value.trim();
-  const direccion = document.getElementById("ee-direccion").value.trim();
   const nombre = document.getElementById("ee-nombre").value.trim();
   const marca = document.getElementById("ee-marca").value.trim();
   const capacidad = document.getElementById("ee-capacidad").value.trim();
@@ -1993,11 +2270,6 @@ function guardarEdicionEquipo(){
     return;
   }
 
-  eq.cliente = cliente || "";
-  eq.telefono = telefono || "";
-  eq.direccion = direccion || "";
-  const coords = obtenerCoordenadasPicker();
-  if(coords){ eq.lat = coords.lat; eq.lng = coords.lng; }
   eq.nombre = nombre;
   eq.marca = marca || "Sin especificar";
   eq.capacidad = capacidad || "Sin especificar";
@@ -2007,17 +2279,18 @@ function guardarEdicionEquipo(){
   eq.horasUso = horasRaw !== "" ? Number(horasRaw) : null;
   eq.filtroLimpio = filtroISO ? fechaISOaDMY(filtroISO) : null;
   eq.tipoCompresor = document.getElementById("ee-tipo").value || null;
-  saveEquipos(state.equipos);
+  saveEquipos(null);
   showToast("Cambios guardados");
   go("detalle");
 }
 
 function eliminarEquipo(){
   showConfirm("¿Eliminar este equipo y todo su historial? Esta acción no se puede deshacer.", () => {
-    state.equipos = state.equipos.filter(e=>e.id!==state.equipoSelId);
-    saveEquipos(state.equipos);
+    const cli = state.clientes.find(c=>(c.equipos||[]).some(e=>e.id===state.equipoSelId));
+    if(cli) cli.equipos = cli.equipos.filter(e=>e.id!==state.equipoSelId);
+    saveEquipos(null);
     showToast("Equipo eliminado");
-    go("equipos");
+    go(cli ? "detalleCliente" : "equipos");
   });
 }
 
@@ -2027,11 +2300,11 @@ function screenAgendar(){
       <div class="screen">
         ${topBar("Programar Mantenimiento","home")}
         <div class="scroll" style="display:flex; flex-direction:column; align-items:center; text-align:center; padding-top:60px;">
-          <div style="font-weight:700; font-size:14.5px;">Primero registra un equipo</div>
+          <div style="font-weight:700; font-size:14.5px;">Primero registra un cliente y su equipo</div>
           <div style="font-size:12.5px; color:var(--ink-soft); margin-top:6px; max-width:240px;">
-            Necesitas al menos un equipo para poder programarle un mantenimiento.
+            Necesitas al menos un equipo registrado para poder programarle un mantenimiento.
           </div>
-          <button class="btn-primary" style="margin-top:16px; max-width:220px;" onclick="go('agregarEquipo')">REGISTRAR EQUIPO</button>
+          <button class="btn-primary" style="margin-top:16px; max-width:220px;" onclick="go('agregarCliente')">REGISTRAR CLIENTE</button>
         </div>
         ${bottomNav("home")}
       </div>`;
@@ -2906,6 +3179,9 @@ function render(){
     equipos: screenEquipos,
     detalle: screenDetalle,
     agregarEquipo: screenAgregarEquipo,
+    detalleCliente: screenDetalleCliente,
+    agregarCliente: screenAgregarCliente,
+    editarCliente: screenEditarCliente,
     editarEquipo: screenEditarEquipo,
     agendar: screenAgendar,
     notificacion: screenNotificacion,
@@ -2956,6 +3232,7 @@ function updateSidebarActive(){
   const group = {
     home:"home", notificacion:"home",
     equipos:"equipos", detalle:"equipos", agregarEquipo:"equipos", editarEquipo:"equipos", agendar:"equipos",
+    detalleCliente:"equipos", agregarCliente:"equipos", editarCliente:"equipos",
     agenda:"agenda",
     historial:"historial", editarHistorial:"historial", comprobante:"historial",
     consejos:"consejos",
