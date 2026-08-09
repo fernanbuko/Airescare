@@ -345,7 +345,6 @@ async function actualizarPanelAdmin() {
         bloqueado,
         tipoCuenta: data.tipoCuenta === "cliente" ? "cliente" : "negocio",
         vinculadoA: data.vinculadoA ? (data.vinculadoA.negocioNombre || "") : "",
-        vinculadoAUid: data.vinculadoA ? (data.vinculadoA.ownerUid || "") : "",
         negocioNombre: perfil.negocioNombre || "",
         nombre: perfil.nombre || "",
         logo: perfil.negocioLogo || perfil.foto || "",
