@@ -212,6 +212,7 @@ async function procesarSolicitudesVinculacion() {
           await db.collection("usuarios").doc(clienteUid).collection("vistaCliente").doc("datos").set({
             negocioNombre: perfilTecnico.negocioNombre || "AiresCare",
             negocioLogo: perfilTecnico.negocioLogo || "",
+            negocioTelefono: perfilTecnico.telefono || "",
             cliente: { nombre: cliente.nombre || "", telefono: cliente.telefono || "", direccion: cliente.direccion || "" },
             equipos: cliente.equipos || [],
             actualizadoEn: Date.now(),
@@ -277,6 +278,7 @@ async function actualizarVistasClientes() {
           await db.collection("usuarios").doc(cliente.clienteUid).collection("vistaCliente").doc("datos").set({
             negocioNombre: perfilTecnico.negocioNombre || "AiresCare",
             negocioLogo: perfilTecnico.negocioLogo || "",
+            negocioTelefono: perfilTecnico.telefono || "",
             cliente: { nombre: cliente.nombre || "", telefono: cliente.telefono || "", direccion: cliente.direccion || "" },
             equipos: cliente.equipos || [],
             actualizadoEn: Date.now(),
