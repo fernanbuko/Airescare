@@ -1717,7 +1717,11 @@ function screenAdminPanel(){
         <div class="card" style="margin-bottom:10px; display:flex; gap:12px; align-items:flex-start;">
           ${c.logo ? `<img src="${c.logo}" width="42" height="42" style="border-radius:999px; object-fit:cover; flex-shrink:0;" alt="" />` : `<div style="width:42px;height:42px;border-radius:999px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center; flex-shrink:0;">${svg('ac',20,'var(--primary)')}</div>`}
           <div style="flex:1; min-width:0;">
-            <div style="font-weight:700; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${nombreMostrado}</div>
+            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+              <div style="font-weight:700; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${nombreMostrado}</div>
+              <span style="font-size:9.5px; font-weight:800; letter-spacing:.3px; padding:2px 7px; border-radius:999px; flex-shrink:0; ${c.tipoCuenta==='cliente' ? 'background:var(--chip-bg); color:var(--primary);' : 'background:#E4F6EF; color:var(--mint);'}">${c.tipoCuenta==='cliente' ? 'CLIENTE' : 'TÉCNICO'}</span>
+            </div>
+            ${c.tipoCuenta==='cliente' && c.vinculadoA ? `<div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">Cliente de: ${c.vinculadoA}</div>` : ""}
             ${c.nombre && c.negocioNombre ? `<div style="font-size:11.5px; color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${c.nombre}</div>` : ""}
             ${c.correo ? `<div style="font-size:11.5px; color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${c.correo}</div>` : ""}
             <div style="font-size:10.5px; color:var(--ink-soft); margin-top:4px;">
