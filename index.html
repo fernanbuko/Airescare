@@ -586,6 +586,77 @@ function esAdmin(){
 let unsubscribeBloqueo = null;
 let bloqueoMostrado = false;
 
+let unsubscribeSolicitudesVinculacion = null;
+
+function escucharSolicitudesVinculacion(){
+  if(!db || !state.usuario || state.modoCliente) return;
+  if(unsubscribeSolicitudesVinculacion) return; // ya está escuchando
+  unsubscribeSolicitudesVinculacion = docPropio().collection("solicitudesVinculacion").onSnapshot(
+    (snap)=>{
+      snap.docChanges().forEach(change=>{
+        if(change.type === "added" || change.type === "modified"){
+          procesarSolicitudVinculacion(change.doc.id, change.doc.data());
+        }
+      });
+    },
+    ()=>{ /* si falla el listener (p.ej. sin permisos) lo ignoramos en silencio */ }
+  );
+}
+
+async function procesarSolicitudVinculacion(clienteUid, solicitud){
+  if(!db || !state.usuario) return;
+  const cli = state.clientes.find(c=>c.codigoAcceso === solicitud.codigo);
+  const solicitudRef = docPropio().collection("solicitudesVinculacion").doc(clienteUid);
+
+  if(!cli){
+    // Código inválido: se descarta enseguida (sin esperar la hora que usa
+    // el robot como respaldo) y se le avisa al cliente.
+    try{
+      await db.collection("usuarios").doc(clienteUid).set({ vinculacionPendiente:false, vinculacionError:true }, { merge:true });
+      await solicitudRef.delete();
+    }catch(e){ console.error("No se pudo descartar la solicitud inválida:", e); }
+    return;
+  }
+
+  try{
+    cli.clienteUid = clienteUid;
+    saveEquipos(null);
+
+    // Marca propia de "ya vinculé a este cliente" — habilita, según las
+    // reglas de Firestore, que en el futuro pueda seguir actualizando su
+    // vista (vistaCliente) sin depender de que la solicitud siga existiendo.
+    await docPropio().collection("clientesVinculados").doc(clienteUid).set({
+      clienteId: cli.id,
+      creado: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    await db.collection("usuarios").doc(clienteUid).set({
+      tipoCuenta: "cliente",
+      vinculacionPendiente: false,
+      vinculacionError: false,
+      vinculadoA: {
+        ownerUid: state.usuario.uid,
+        clienteId: cli.id,
+        negocioNombre: state.perfil.negocioNombre || "AiresCare"
+      }
+    }, { merge:true });
+
+    await db.collection("usuarios").doc(clienteUid).collection("vistaCliente").doc("datos").set({
+      negocioNombre: state.perfil.negocioNombre || "AiresCare",
+      negocioLogo: state.perfil.negocioLogo || "",
+      cliente: { nombre: cli.nombre||"", telefono: cli.telefono||"", direccion: cli.direccion||"" },
+      equipos: cli.equipos || [],
+      actualizadoEn: Date.now()
+    });
+
+    await solicitudRef.delete();
+    showToast(`${cli.nombre || "Cliente"} vinculado ✓`);
+    if(state.screen === "detalleCliente" || state.screen === "equipos") render();
+  }catch(e){
+    console.error("No se pudo vincular al instante, el robot lo procesará más tarde:", e);
+  }
+}
+
 function escucharBloqueoPropio(){
   if(!db || !state.usuario) return;
   if(unsubscribeBloqueo) unsubscribeBloqueo();
@@ -894,6 +965,7 @@ async function sincronizarDesdeNube(){
     if(state.screen === "perfil") render();
   }
   escucharBloqueoPropio();
+  escucharSolicitudesVinculacion();
   return siguientePantalla;
 }
 
