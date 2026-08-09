@@ -1,4 +1,4 @@
-const CACHE_NAME = "airescare-cache-v42";
+const CACHE_NAME = "airescare-cache-v43";
 
 // Los scripts de Firebase se cargan desde el servidor de Google
 // (gstatic.com), no desde este mismo sitio — por eso hay que guardarlos
