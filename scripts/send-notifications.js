@@ -190,6 +190,11 @@ async function procesarSolicitudesVinculacion() {
           cliente.clienteUid = clienteUid;
           clientesCambiaron = true;
 
+          await db.collection("usuarios").doc(ownerUid).collection("clientesVinculados").doc(clienteUid).set({
+            clienteId: cliente.id,
+            creado: admin.firestore.FieldValue.serverTimestamp(),
+          });
+
           await db.collection("usuarios").doc(clienteUid).set(
             {
               tipoCuenta: "cliente",
