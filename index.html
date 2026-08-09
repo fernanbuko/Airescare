@@ -650,6 +650,7 @@ async function procesarSolicitudVinculacion(clienteUid, solicitud){
     await db.collection("usuarios").doc(clienteUid).collection("vistaCliente").doc("datos").set({
       negocioNombre: state.perfil.negocioNombre || "AiresCare",
       negocioLogo: state.perfil.negocioLogo || "",
+      negocioTelefono: state.perfil.telefono || "",
       cliente: { nombre: cli.nombre||"", telefono: cli.telefono||"", direccion: cli.direccion||"" },
       equipos: cli.equipos || [],
       actualizadoEn: Date.now()
@@ -1529,6 +1530,7 @@ function activarVistaPreview(tipo){
     state.vistaCliente = {
       negocioNombre: state.perfil.negocioNombre || "AiresCare",
       negocioLogo: state.perfil.negocioLogo || "",
+      negocioTelefono: state.perfil.telefono || "",
       cliente: { nombre: "Cliente de ejemplo", telefono: "", direccion: "" },
       equipos: [
         {
@@ -2037,6 +2039,12 @@ function screenHomeCliente(){
 
         <div style="font-size:22px; font-weight:800; margin-top:18px;">¡Hola${v.cliente && v.cliente.nombre ? ', ' + v.cliente.nombre.split(' ')[0] : ''}!</div>
         <div style="font-size:13px; color:var(--ink-soft); margin-top:4px;">Así están tus equipos.</div>
+
+        ${v.negocioTelefono ? `
+        <div style="display:flex; gap:8px; margin-top:14px;">
+          <a href="tel:${limpiarTelefono(v.negocioTelefono)}" style="flex:1; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:var(--chip-bg); color:var(--primary); border-radius:10px; padding:10px; font-size:12.5px; font-weight:700;">${svg('phone',14,'var(--primary)')} Llamar</a>
+          <a href="${linkWhatsApp(v.negocioTelefono, `Hola, soy ${v.cliente && v.cliente.nombre ? v.cliente.nombre : 'tu cliente'} y quisiera contactarte sobre el mantenimiento de mi aire acondicionado.`)}" target="_blank" rel="noopener" style="flex:1; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:6px; background:#E4F6EF; color:var(--mint); border-radius:10px; padding:10px; font-size:12.5px; font-weight:700;">${svg('whatsapp',14,'var(--mint)')} WhatsApp</a>
+        </div>` : ""}
 
         ${equipos.length === 0 ? `<div class="card" style="margin-top:20px; text-align:center; color:var(--ink-soft); font-size:13px; padding:20px;">Todavía no hay equipos registrados a tu nombre.</div>` : equipos.map(eq=>{
           const filtro = estadoFiltro(eq);
