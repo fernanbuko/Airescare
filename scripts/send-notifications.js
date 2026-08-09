@@ -150,6 +150,145 @@ async function procesarSolicitudesBloqueo() {
   }
 }
 
+/* ---------------------------------------------------------
+   Portal de clientes: conecta las solicitudes de vinculación (cuando un
+   cliente ingresa el código que le compartió su técnico) y mantiene
+   actualizada la vista de solo lectura de cada cliente ya conectado.
+----------------------------------------------------------*/
+async function procesarSolicitudesVinculacion() {
+  try {
+    const usuariosSnap = await db.collection("usuarios").get();
+    let totalVinculadas = 0;
+
+    for (const doc of usuariosSnap.docs) {
+      const ownerUid = doc.id;
+      const solicitudesSnap = await db.collection("usuarios").doc(ownerUid).collection("solicitudesVinculacion").get();
+      if (solicitudesSnap.empty) continue;
+
+      const data = doc.data();
+      let clientes = [];
+      try {
+        clientes = data.clientes ? JSON.parse(data.clientes) : [];
+      } catch (e) {
+        continue;
+      }
+      let perfilTecnico = {};
+      try {
+        perfilTecnico = data.perfil ? JSON.parse(data.perfil) : {};
+      } catch (e) {
+        perfilTecnico = {};
+      }
+
+      let clientesCambiaron = false;
+
+      for (const solicitudDoc of solicitudesSnap.docs) {
+        const clienteUid = solicitudDoc.id;
+        const solicitud = solicitudDoc.data();
+        const cliente = clientes.find((c) => c.codigoAcceso === solicitud.codigo);
+
+        if (cliente) {
+          cliente.clienteUid = clienteUid;
+          clientesCambiaron = true;
+
+          await db.collection("usuarios").doc(clienteUid).set(
+            {
+              tipoCuenta: "cliente",
+              vinculacionPendiente: false,
+              vinculacionError: false,
+              vinculadoA: {
+                ownerUid,
+                clienteId: cliente.id,
+                negocioNombre: perfilTecnico.negocioNombre || "AiresCare",
+              },
+            },
+            { merge: true }
+          );
+
+          await db.collection("usuarios").doc(clienteUid).collection("vistaCliente").doc("datos").set({
+            negocioNombre: perfilTecnico.negocioNombre || "AiresCare",
+            negocioLogo: perfilTecnico.negocioLogo || "",
+            cliente: { nombre: cliente.nombre || "", telefono: cliente.telefono || "", direccion: cliente.direccion || "" },
+            equipos: cliente.equipos || [],
+            actualizadoEn: Date.now(),
+          });
+
+          await solicitudDoc.ref.delete();
+          totalVinculadas++;
+          console.log(`Cliente vinculado: ${cliente.nombre || clienteUid} -> cuenta de ${ownerUid}`);
+        } else {
+          // Codigo invalido o vencido. Si la solicitud ya lleva mas de una
+          // hora esperando, se avisa el error y se descarta -- para no
+          // dejar al cliente esperando para siempre por un codigo mal
+          // escrito.
+          const creadoMs = solicitud.creado && solicitud.creado.toMillis ? solicitud.creado.toMillis() : 0;
+          if (creadoMs && Date.now() - creadoMs > 60 * 60 * 1000) {
+            await db.collection("usuarios").doc(clienteUid).set(
+              { vinculacionPendiente: false, vinculacionError: true },
+              { merge: true }
+            );
+            await solicitudDoc.ref.delete();
+            console.log(`Solicitud de vinculación descartada (código inválido): ${clienteUid}`);
+          }
+        }
+      }
+
+      if (clientesCambiaron) {
+        await db.collection("usuarios").doc(ownerUid).update({ clientes: JSON.stringify(clientes) });
+      }
+    }
+
+    if (totalVinculadas > 0) console.log(`Total de clientes vinculados en esta corrida: ${totalVinculadas}`);
+  } catch (e) {
+    console.error("Error procesando solicitudes de vinculación:", e.message);
+  }
+}
+
+async function actualizarVistasClientes() {
+  try {
+    const usuariosSnap = await db.collection("usuarios").get();
+    let actualizadas = 0;
+
+    for (const doc of usuariosSnap.docs) {
+      const ownerUid = doc.id;
+      const data = doc.data();
+      let clientes = [];
+      try {
+        clientes = data.clientes ? JSON.parse(data.clientes) : [];
+      } catch (e) {
+        continue;
+      }
+      const vinculados = clientes.filter((c) => c.clienteUid);
+      if (vinculados.length === 0) continue;
+
+      let perfilTecnico = {};
+      try {
+        perfilTecnico = data.perfil ? JSON.parse(data.perfil) : {};
+      } catch (e) {
+        perfilTecnico = {};
+      }
+
+      for (const cliente of vinculados) {
+        try {
+          await db.collection("usuarios").doc(cliente.clienteUid).collection("vistaCliente").doc("datos").set({
+            negocioNombre: perfilTecnico.negocioNombre || "AiresCare",
+            negocioLogo: perfilTecnico.negocioLogo || "",
+            cliente: { nombre: cliente.nombre || "", telefono: cliente.telefono || "", direccion: cliente.direccion || "" },
+            equipos: cliente.equipos || [],
+            actualizadoEn: Date.now(),
+          });
+          actualizadas++;
+        } catch (e) {
+          console.error(`No se pudo actualizar la vista del cliente ${cliente.clienteUid}:`, e.message);
+        }
+      }
+    }
+
+    if (actualizadas > 0) console.log(`Vistas de clientes actualizadas: ${actualizadas}`);
+  } catch (e) {
+    console.error("Error actualizando vistas de clientes:", e.message);
+  }
+}
+
 async function actualizarPanelAdmin() {
   try {
     const usuarios = await db.collection("usuarios").listDocuments();
@@ -247,12 +386,145 @@ async function actualizarPanelAdmin() {
   }
 }
 
+// Arma la lista de avisos (mantenimiento y filtro) para una lista de
+// equipos. Se usa tanto para el tecnico (todos sus equipos) como para cada
+// cliente vinculado (solo los equipos de ESE cliente).
+function construirAvisos(equipos, ctx) {
+  const { hoyISO, mananaISO, en5DiasISO, minutosAhora } = ctx;
+  const avisos = [];
+  equipos.forEach((eq) => {
+    (eq.historial || []).forEach((h) => {
+      if (h.realizado || !h.fecha) return;
+      const iso = fechaDMYaISO(h.fecha);
+
+      if (iso === en5DiasISO) {
+        avisos.push({
+          eq,
+          clave: `${h.id}_${iso}_5dias`,
+          titulo: `En 5 días: mantenimiento de ${eq.nombre}`,
+          hora: h.hora,
+        });
+      }
+
+      if (iso === mananaISO) {
+        avisos.push({
+          eq,
+          clave: `${h.id}_${iso}_manana`,
+          titulo: `Mañana: mantenimiento de ${eq.nombre}`,
+          hora: h.hora,
+        });
+      }
+
+      if (iso === hoyISO) {
+        let dentroDe30Min = false;
+        if (h.hora) {
+          const minutosCita = minutosDeHora(h.hora);
+          const diferencia = minutosCita - minutosAhora;
+          if (diferencia >= 0 && diferencia <= 30) {
+            dentroDe30Min = true;
+            avisos.push({
+              eq,
+              clave: `${h.id}_${iso}_${h.hora}_30min`,
+              titulo: `Tienes un mantenimiento en 30 minutos: ${eq.nombre}`,
+              hora: h.hora,
+            });
+          }
+        }
+        if (!dentroDe30Min) {
+          avisos.push({
+            eq,
+            clave: `${h.id}_${iso}_hoy`,
+            titulo: `Hoy: mantenimiento de ${eq.nombre}`,
+            hora: h.hora,
+          });
+        }
+      }
+    });
+
+    if (eq.filtroLimpio) {
+      const isoFiltro = fechaDMYaISO(eq.filtroLimpio);
+      const diasFiltro = diasEntreISO(isoFiltro, hoyISO);
+      if (diasFiltro === FILTRO_FRECUENCIA_DIAS - 1) {
+        avisos.push({
+          eq,
+          clave: `${eq.id}_${isoFiltro}_filtro_manana`,
+          titulo: `Mañana toca limpiar el filtro de ${eq.nombre}`,
+          esFiltro: true,
+          diasFiltro,
+        });
+      }
+      if (diasFiltro >= FILTRO_FRECUENCIA_DIAS) {
+        avisos.push({
+          eq,
+          clave: `${eq.id}_${isoFiltro}_filtro`,
+          titulo: `Toca limpiar el filtro de ${eq.nombre}`,
+          esFiltro: true,
+          diasFiltro,
+        });
+      }
+    }
+  });
+  return avisos;
+}
+
+// Manda los avisos y los guarda en la coleccion "notificaciones" de la
+// cuenta indicada (tecnico o cliente vinculado), evitando repetir los que
+// ya se mandaron antes.
+async function enviarAvisos(uid, avisos) {
+  if (avisos.length === 0) return 0;
+
+  const tokensSnap = await db.collection("usuarios").doc(uid).collection("tokens").get();
+  const tokens = tokensSnap.docs.map((t) => t.id);
+
+  const notifSnap = await db.collection("usuarios").doc(uid).collection("notificaciones").get();
+  const yaNotificado = new Set(notifSnap.docs.map((d) => d.id));
+
+  let enviadas = 0;
+  for (const { eq, clave, titulo, esFiltro, diasFiltro, hora } of avisos) {
+    if (yaNotificado.has(clave)) continue;
+
+    const cuerpo = esFiltro
+      ? (diasFiltro >= FILTRO_FRECUENCIA_DIAS
+        ? `Han pasado ${diasFiltro} días desde la última limpieza${eq.cliente ? " · Cliente: " + eq.cliente : ""}`
+        : `Se cumplen ${FILTRO_FRECUENCIA_DIAS} días desde la última limpieza${eq.cliente ? " · Cliente: " + eq.cliente : ""}`)
+      : (eq.cliente
+        ? `Cliente: ${eq.cliente}${eq.marca ? " · " + eq.marca : ""}${hora ? " · " + hora : ""}`
+        : (eq.marca || "Revisa el detalle en la app"));
+
+    if (tokens.length > 0) {
+      try {
+        await admin.messaging().sendEachForMulticast({
+          tokens,
+          data: { title: titulo, body: cuerpo, tag: clave, url: "./" },
+        });
+      } catch (e) {
+        console.error(`Error enviando push a ${uid}:`, e.message);
+      }
+    }
+
+    try {
+      await db.collection("usuarios").doc(uid).collection("notificaciones").doc(clave).set({
+        titulo,
+        cuerpo,
+        equipoId: eq.id,
+        creada: admin.firestore.FieldValue.serverTimestamp(),
+        leida: false,
+      });
+      enviadas++;
+    } catch (e) {
+      console.error(`Error guardando notificacion para ${uid}:`, e.message);
+    }
+  }
+  return enviadas;
+}
+
 async function main() {
   const ahora = ahoraEcuador();
   const hoyISO = isoDeFecha(ahora);
   const mananaISO = sumarDias(hoyISO, 1);
   const en5DiasISO = sumarDias(hoyISO, 5);
   const minutosAhora = ahora.getUTCHours() * 60 + ahora.getUTCMinutes();
+  const ctx = { hoyISO, mananaISO, en5DiasISO, minutosAhora };
 
   console.log(`Hora Ecuador: ${hoyISO} ${String(ahora.getUTCHours()).padStart(2,"0")}:${String(ahora.getUTCMinutes()).padStart(2,"0")}`);
   console.log(`Revisando mantenimientos para hoy (${hoyISO}) y mañana (${mananaISO})...`);
@@ -267,13 +539,14 @@ async function main() {
     const data = doc.data();
     if (!data.clientes && !data.equipos) continue;
 
+    let clientes = [];
     let equipos;
     try {
       if (data.clientes) {
         // Formato nuevo: clientes con equipos adentro. Se aplana a una
         // lista simple de equipos (cada uno con los datos de su cliente
         // pegados), igual que hace la app en el navegador.
-        const clientes = JSON.parse(data.clientes);
+        clientes = JSON.parse(data.clientes);
         equipos = [];
         (clientes || []).forEach((cli) => {
           (cli.equipos || []).forEach((eq) => {
@@ -296,139 +569,25 @@ async function main() {
       continue;
     }
 
-    // Armar la lista de avisos que le tocan a este usuario en esta corrida
-    const avisos = [];
-    equipos.forEach((eq) => {
-      // Revisamos cada registro PENDIENTE del historial (ahí es donde vive
-      // la fecha y la hora real de cada mantenimiento programado), no solo
-      // el resumen "proximo" del equipo.
-      (eq.historial || []).forEach((h) => {
-        if (h.realizado || !h.fecha) return;
-        const iso = fechaDMYaISO(h.fecha);
+    // Avisos para el tecnico (todos sus equipos, de todos sus clientes)
+    const avisosTecnico = construirAvisos(equipos, ctx);
+    const enviadasTecnico = await enviarAvisos(uid, avisosTecnico);
+    if (enviadasTecnico > 0) {
+      totalEnviadas += enviadasTecnico;
+      console.log(`Enviadas ${enviadasTecnico} notificacion(es) al tecnico ${uid}`);
+    }
 
-        // Mismo recordatorio para mantenimientos programados a mano y para
-        // los que la app arma sola a 6 meses: 5 días antes, mañana (1 día
-        // antes), el mismo día, y 30 minutos antes si tiene hora.
-        if (iso === en5DiasISO) {
-          avisos.push({
-            eq,
-            clave: `${h.id}_${iso}_5dias`,
-            titulo: `En 5 días: mantenimiento de ${eq.nombre}`,
-            hora: h.hora,
-          });
-        }
+    // Avisos para cada CLIENTE vinculado (solo sus propios equipos)
+    let perfilTecnico = {};
+    try { perfilTecnico = data.perfil ? JSON.parse(data.perfil) : {}; } catch (e) { perfilTecnico = {}; }
 
-        if (iso === mananaISO) {
-          avisos.push({
-            eq,
-            clave: `${h.id}_${iso}_manana`,
-            titulo: `Mañana: mantenimiento de ${eq.nombre}`,
-            hora: h.hora,
-          });
-        }
-
-        if (iso === hoyISO) {
-          // Si tiene hora puesta y ya estamos dentro de los 30 minutos previos,
-          // mandamos SOLO el aviso de "30 minutos" (mas especifico) y nos
-          // saltamos el de "Hoy" para no repetir el mismo aviso dos veces.
-          let dentroDe30Min = false;
-          if (h.hora) {
-            const minutosCita = minutosDeHora(h.hora);
-            const diferencia = minutosCita - minutosAhora;
-            if (diferencia >= 0 && diferencia <= 30) {
-              dentroDe30Min = true;
-              avisos.push({
-                eq,
-                clave: `${h.id}_${iso}_${h.hora}_30min`,
-                titulo: `Tienes un mantenimiento en 30 minutos: ${eq.nombre}`,
-                hora: h.hora,
-              });
-            }
-          }
-
-          if (!dentroDe30Min) {
-            avisos.push({
-              eq,
-              clave: `${h.id}_${iso}_hoy`,
-              titulo: `Hoy: mantenimiento de ${eq.nombre}`,
-              hora: h.hora,
-            });
-          }
-        }
-      });
-
-      // Aviso de filtro sucio (independiente de si hay mantenimiento programado)
-      if (eq.filtroLimpio) {
-        const isoFiltro = fechaDMYaISO(eq.filtroLimpio);
-        const diasFiltro = diasEntreISO(isoFiltro, hoyISO);
-        if (diasFiltro === FILTRO_FRECUENCIA_DIAS - 1) {
-          avisos.push({
-            eq,
-            clave: `${eq.id}_${isoFiltro}_filtro_manana`,
-            titulo: `Mañana toca limpiar el filtro de ${eq.nombre}`,
-            esFiltro: true,
-            diasFiltro,
-          });
-        }
-        if (diasFiltro >= FILTRO_FRECUENCIA_DIAS) {
-          avisos.push({
-            eq,
-            clave: `${eq.id}_${isoFiltro}_filtro`,
-            titulo: `Toca limpiar el filtro de ${eq.nombre}`,
-            esFiltro: true,
-            diasFiltro,
-          });
-        }
-      }
-    });
-    if (avisos.length === 0) continue;
-
-    // Tokens de notificacion push registrados por este usuario
-    const tokensSnap = await db.collection("usuarios").doc(uid).collection("tokens").get();
-    const tokens = tokensSnap.docs.map((t) => t.id);
-
-    // Notificaciones ya registradas antes, para no repetir el mismo aviso
-    // (esta misma coleccion es la que la app muestra en la campanita)
-    const notifSnap = await db.collection("usuarios").doc(uid).collection("notificaciones").get();
-    const yaNotificado = new Set(notifSnap.docs.map((d) => d.id));
-
-    for (const { eq, clave, titulo, esFiltro, diasFiltro, hora } of avisos) {
-      if (yaNotificado.has(clave)) continue;
-
-      const cuerpo = esFiltro
-        ? (diasFiltro >= FILTRO_FRECUENCIA_DIAS
-          ? `Han pasado ${diasFiltro} días desde la última limpieza${eq.cliente ? " · Cliente: " + eq.cliente : ""}`
-          : `Se cumplen ${FILTRO_FRECUENCIA_DIAS} días desde la última limpieza${eq.cliente ? " · Cliente: " + eq.cliente : ""}`)
-        : (eq.cliente
-          ? `Cliente: ${eq.cliente}${eq.marca ? " · " + eq.marca : ""}${hora ? " · " + hora : ""}`
-          : (eq.marca || "Revisa el detalle en la app"));
-
-      if (tokens.length > 0) {
-        try {
-          await admin.messaging().sendEachForMulticast({
-            tokens,
-            // Solo "data" (sin "notification"): asi el navegador NO la muestra
-            // el solo, y evitamos que salga duplicada junto con la que
-            // mostramos nosotros mismos en sw.js.
-            data: { title: titulo, body: cuerpo, tag: clave, url: "./" },
-          });
-          console.log(`Push enviado a ${uid}: ${titulo}`);
-        } catch (e) {
-          console.error(`Error enviando push a ${uid}:`, e.message);
-        }
-      }
-
-      try {
-        await db.collection("usuarios").doc(uid).collection("notificaciones").doc(clave).set({
-          titulo,
-          cuerpo,
-          equipoId: eq.id,
-          creada: admin.firestore.FieldValue.serverTimestamp(),
-          leida: false,
-        });
-        totalEnviadas++;
-      } catch (e) {
-        console.error(`Error guardando notificacion para ${uid}:`, e.message);
+    for (const cli of clientes) {
+      if (!cli.clienteUid) continue;
+      const avisosCliente = construirAvisos(cli.equipos || [], ctx);
+      const enviadasCliente = await enviarAvisos(cli.clienteUid, avisosCliente);
+      if (enviadasCliente > 0) {
+        totalEnviadas += enviadasCliente;
+        console.log(`Enviadas ${enviadasCliente} notificacion(es) al cliente ${cli.nombre} (${cli.clienteUid})`);
       }
     }
   }
@@ -441,6 +600,12 @@ async function main() {
   await procesarSolicitudesBloqueo();
   await procesarSolicitudesEliminacion();
   await actualizarPanelAdmin();
+
+  // Portal de clientes: primero se conectan las solicitudes nuevas, y
+  // despues se actualiza la vista de TODOS los clientes ya vinculados
+  // (para que reflejen cualquier cambio reciente hecho por el tecnico).
+  await procesarSolicitudesVinculacion();
+  await actualizarVistasClientes();
 }
 
 main().catch((err) => {
