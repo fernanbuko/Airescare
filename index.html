@@ -4001,6 +4001,29 @@ function truncarTexto(ctx, texto, maxWidth){
   return t + "…";
 }
 
+// Insignia estilo logo real de WhatsApp: círculo verde con la burbuja rellena en blanco
+// (el ícono de línea genérico de ICON.whatsapp no se parece al logo de la marca).
+function dibujarInsigniaWhatsapp(ctx, cx, cy, r){
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI*2);
+  ctx.fillStyle = "#25D366";
+  ctx.fill();
+
+  const size = r*1.25, s = size/24;
+  const ccx = 12.51, ccy = 10.94; // centro real de la burbuja dentro del viewBox 24x24
+  ctx.save();
+  ctx.translate(cx - ccx*s, cy - ccy*s);
+  ctx.scale(s, s);
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fill(new Path2D("M6 18l1.1-3.2A6.8 6.8 0 1 1 10 17l-4 1z"));
+  ctx.strokeStyle = "#25D366";
+  ctx.lineWidth = 1.6/s;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.stroke(new Path2D("M8.8 9.6c0 3 2.6 5.6 5.6 5.6"));
+  ctx.restore();
+}
+
 function dibujarChip(ctx, x, y, icono, texto){
   ctx.font = "600 15px Arial, sans-serif";
   const iconSize = 15, padX = 14, gap = 7, h = 34;
@@ -4149,11 +4172,7 @@ async function dibujarTarjetaPresentacion(canvas){
   ctx.fillStyle = "rgba(255,255,255,0.08)";
   ctx.fillRect(0, H-footerH, W, footerH);
   const footerIconR = 16, footerIconCy = H-footerH/2;
-  ctx.beginPath();
-  ctx.arc(padX+footerIconR, footerIconCy, footerIconR, 0, Math.PI*2);
-  ctx.fillStyle = "rgba(255,255,255,0.16)";
-  ctx.fill();
-  dibujarIconoEnCanvas(ctx, "whatsapp", padX+footerIconR-9, footerIconCy-9, 18, "#FFFFFF", 2);
+  dibujarInsigniaWhatsapp(ctx, padX+footerIconR, footerIconCy, footerIconR);
   ctx.fillStyle = "#FFFFFF";
   ctx.font = "600 18px Arial, sans-serif";
   ctx.textBaseline = "middle";
