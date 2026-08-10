@@ -4111,7 +4111,10 @@ async function compartirTarjetaWhatsApp(){
     }
   }
   descargarBlob(blob, nombreArchivoTarjeta());
-  showToast("Imagen descargada. Ábrela en WhatsApp y adjúntala al chat.");
+  const negocioNombre = state.perfil.negocioNombre || "AiresCare";
+  const mensaje = `Hola, te comparto mis datos de contacto para el mantenimiento de tu aire acondicionado. — ${negocioNombre}`;
+  window.open(linkWhatsApp("", mensaje), "_blank", "noopener");
+  showToast("Imagen descargada. Elige el chat en WhatsApp y adjunta la imagen descargada.");
 }
 
 async function descargarTarjetaImagen(){
