@@ -4148,11 +4148,16 @@ async function dibujarTarjetaPresentacion(canvas){
   const footerH = 64;
   ctx.fillStyle = "rgba(255,255,255,0.08)";
   ctx.fillRect(0, H-footerH, W, footerH);
-  dibujarIconoEnCanvas(ctx, "whatsapp", padX, H-footerH/2-11, 22, "#8FD9C4", 2);
+  const footerIconR = 16, footerIconCy = H-footerH/2;
+  ctx.beginPath();
+  ctx.arc(padX+footerIconR, footerIconCy, footerIconR, 0, Math.PI*2);
+  ctx.fillStyle = "rgba(255,255,255,0.16)";
+  ctx.fill();
+  dibujarIconoEnCanvas(ctx, "whatsapp", padX+footerIconR-9, footerIconCy-9, 18, "#FFFFFF", 2);
   ctx.fillStyle = "#FFFFFF";
   ctx.font = "600 18px Arial, sans-serif";
   ctx.textBaseline = "middle";
-  ctx.fillText("Contáctame por WhatsApp", padX+34, H-footerH/2+1);
+  ctx.fillText("Contáctame por WhatsApp", padX+footerIconR*2+14, footerIconCy+1);
   ctx.textBaseline = "alphabetic";
 }
 
