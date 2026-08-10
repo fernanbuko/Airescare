@@ -2440,6 +2440,9 @@ function screenAgregarCliente(){
         <label class="field-label">Última limpieza de filtro (opcional)</label>
         <input class="field-input" id="ne-filtro" type="date" />
 
+        <label class="field-label">Último mantenimiento (opcional)</label>
+        <input class="field-input" id="ne-ultimo" type="date" />
+
         <button class="btn-primary" style="margin-top:20px; margin-bottom:20px;" onclick="registrarCliente()">GUARDAR CLIENTE Y EQUIPO</button>
       </div>
       ${bottomNav("equipos")}
@@ -2466,6 +2469,7 @@ function registrarCliente(){
   const instaladoISO = document.getElementById("ne-instalado").value;
   const horasRaw = document.getElementById("ne-horas").value;
   const filtroISO = document.getElementById("ne-filtro").value;
+  const ultimoISO = document.getElementById("ne-ultimo").value;
   const tipoCompresor = document.getElementById("ne-tipo").value || null;
 
   const coords = obtenerCoordenadasPicker();
@@ -2483,6 +2487,13 @@ function registrarCliente(){
     estado: "Activo",
     historial: []
   };
+
+  if(ultimoISO){
+    const h = {id: Date.now()+Math.random().toString(36).slice(2,7), fecha: fechaISOaDMY(ultimoISO), hora:"", tipo:"Mantenimiento Preventivo", tecnico:"Sin asignar", precio:null, notas:"Mantenimiento registrado al dar de alta el equipo.", realizado:true};
+    nuevoEquipo.historial.push(h);
+    programarSiguienteMantenimiento(nuevoEquipo, h);
+    recalcularFechasEquipo(nuevoEquipo);
+  }
 
   const nuevoCliente = {
     id: nextClienteId(),
@@ -2770,6 +2781,9 @@ function screenAgregarEquipo(){
         <label class="field-label">Última limpieza de filtro (opcional)</label>
         <input class="field-input" id="ne-filtro" type="date" />
 
+        <label class="field-label">Último mantenimiento (opcional)</label>
+        <input class="field-input" id="ne-ultimo" type="date" />
+
         <button class="btn-primary" style="margin-top:20px; margin-bottom:20px;" onclick="registrarEquipo()">GUARDAR EQUIPO</button>
       </div>
       ${bottomNav("equipos")}
@@ -2792,6 +2806,7 @@ function registrarEquipo(){
 
   const horasRaw = document.getElementById("ne-horas").value;
   const filtroISO = document.getElementById("ne-filtro").value;
+  const ultimoISO = document.getElementById("ne-ultimo").value;
   const tipoCompresor = document.getElementById("ne-tipo").value || null;
 
   const nuevo = {
@@ -2808,6 +2823,14 @@ function registrarEquipo(){
     estado: "Activo",
     historial: []
   };
+
+  if(ultimoISO){
+    const h = {id: Date.now()+Math.random().toString(36).slice(2,7), fecha: fechaISOaDMY(ultimoISO), hora:"", tipo:"Mantenimiento Preventivo", tecnico:"Sin asignar", precio:null, notas:"Mantenimiento registrado al dar de alta el equipo.", realizado:true};
+    nuevo.historial.push(h);
+    programarSiguienteMantenimiento(nuevo, h);
+    recalcularFechasEquipo(nuevo);
+  }
+
   cli.equipos.push(nuevo);
   saveEquipos(null);
   state.equipoSelId = nuevo.id;
