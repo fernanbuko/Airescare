@@ -389,7 +389,8 @@ const ICON = {
   calendarDays: `<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/>`,
   search: `<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>`,
   lock: `<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>`,
-  refresh: `<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>`
+  refresh: `<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>`,
+  mail: `<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M4 6.5l8 6.5 8-6.5"/>`
 };
 function svg(name, size=20, color="currentColor", strokeW=2){
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="${strokeW}" stroke-linecap="round" stroke-linejoin="round">${ICON[name]||""}</svg>`;
@@ -2869,6 +2870,11 @@ function screenEditarEquipo(){
         <label class="field-label">Última limpieza de filtro (opcional)</label>
         <input class="field-input" id="ee-filtro" type="date" value="${eq.filtroLimpio?fechaDMYaISO(eq.filtroLimpio):""}" />
 
+        ${eq.historial.length === 0 ? `
+        <label class="field-label">Último mantenimiento (opcional)</label>
+        <input class="field-input" id="ee-ultimo" type="date" />
+        ` : ""}
+
         <button class="btn-primary" style="margin-top:20px;" onclick="guardarEdicionEquipo()">GUARDAR CAMBIOS</button>
         <button class="btn-outline" style="margin-top:10px; margin-bottom:20px; border-color:#D64545; color:#D64545;" onclick="eliminarEquipo()">ELIMINAR EQUIPO</button>
       </div>
@@ -2898,6 +2904,17 @@ function guardarEdicionEquipo(){
   eq.horasUso = horasRaw !== "" ? Number(horasRaw) : null;
   eq.filtroLimpio = filtroISO ? fechaISOaDMY(filtroISO) : null;
   eq.tipoCompresor = document.getElementById("ee-tipo").value || null;
+
+  if(eq.historial.length === 0){
+    const ultimoISO = document.getElementById("ee-ultimo").value;
+    if(ultimoISO){
+      const h = {id: Date.now()+Math.random().toString(36).slice(2,7), fecha: fechaISOaDMY(ultimoISO), hora:"", tipo:"Mantenimiento Preventivo", tecnico:"Sin asignar", precio:null, notas:"Mantenimiento registrado al editar el equipo.", realizado:true};
+      eq.historial.push(h);
+      programarSiguienteMantenimiento(eq, h);
+      recalcularFechasEquipo(eq);
+    }
+  }
+
   saveEquipos(null);
   showToast("Cambios guardados");
   go("detalle");
@@ -3670,6 +3687,17 @@ function screenPerfil(){
           </div>
         </div>
 
+        <button onclick="go('tarjeta')" style="width:100%; text-align:left; background:none; border:none; padding:0; display:block; margin-top:16px;">
+          <div class="card" style="display:flex; align-items:center; gap:12px;">
+            <div style="width:44px; height:44px; border-radius:12px; background:var(--chip-bg); display:flex; align-items:center; justify-content:center; flex-shrink:0;">${svg('share',20,'var(--primary)')}</div>
+            <div style="flex:1;">
+              <div style="font-weight:700; font-size:13.5px;">Tarjeta de presentación</div>
+              <div style="font-size:11.5px; color:var(--ink-soft); margin-top:2px;">Comparte tus datos de contacto por WhatsApp como imagen</div>
+            </div>
+            ${svg('chevronRight',16,'var(--ink-soft)')}
+          </div>
+        </button>
+
         <div style="margin-top:22px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Ingresos</div>
         <div class="card" style="margin-top:8px; display:flex; gap:10px;">
           <div style="flex:1; text-align:center; padding:6px 4px; border-right:1px solid var(--line);">
@@ -3811,6 +3839,288 @@ function guardarPerfil(){
   render();
 }
 
+/* ---------- Tarjeta de presentación (imagen para compartir por WhatsApp) ---------- */
+function screenTarjeta(){
+  const p = state.perfil;
+  const sinDatos = !p.nombre && !p.negocioNombre && !p.telefono && !p.correo;
+  return `
+    <div class="screen">
+      ${topBar("Tarjeta de Presentación","perfil")}
+      <div class="scroll">
+        ${sinDatos ? `
+        <div class="card" style="margin-top:4px; background:#FDF3E3; border-color:#F3DFAE;">
+          <div style="font-size:12.5px; color:var(--ink-soft); line-height:1.5;">
+            Todavía no llenaste tus datos de perfil. Complétalos para que aparezcan en tu tarjeta.
+          </div>
+          <button class="btn-outline" style="margin-top:10px;" onclick="go('perfil')">IR A MI PERFIL</button>
+        </div>` : ""}
+        <canvas id="tarjeta-canvas" style="width:100%; height:auto; display:block; border-radius:18px; margin-top:14px; box-shadow:0 8px 26px rgba(11,42,69,0.18);"></canvas>
+
+        <button class="btn-primary" style="margin-top:20px; display:flex; align-items:center; justify-content:center; gap:8px;" onclick="compartirTarjetaWhatsApp()">${svg('whatsapp',16,'#fff')} COMPARTIR POR WHATSAPP</button>
+        <button class="btn-outline" style="margin-top:10px; margin-bottom:20px;" onclick="descargarTarjetaImagen()">DESCARGAR IMAGEN</button>
+      </div>
+      ${bottomNav("perfil")}
+    </div>`;
+}
+
+function cargarImagenTarjeta(src){
+  return new Promise((resolve)=>{
+    if(!src){ resolve(null); return; }
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+// Dibuja un ícono de la app (paths de ICON, pensados para stroke a 24x24) dentro de un canvas.
+// Los íconos de ICON son SVG pensados para <svg><path>/<rect>/<circle></svg> a 24x24;
+// acá se re-dibujan a mano sobre canvas (Path2D no lee rect/circle, solo paths).
+function dibujarIconoEnCanvas(ctx, nombreIcono, x, y, size, color, strokeW){
+  const svgStr = ICON[nombreIcono];
+  if(!svgStr) return;
+  const s = size/24;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s, s);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = strokeW / s;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  const tagRe = /<(path|rect|circle)\s+([^>]*)\/>/g;
+  let m;
+  while((m = tagRe.exec(svgStr))){
+    const tag = m[1];
+    const attrs = {};
+    m[2].replace(/([a-zA-Z-]+)="([^"]*)"/g, (_, k, v) => { attrs[k] = v; return ""; });
+    if(tag === "path" && attrs.d){
+      ctx.stroke(new Path2D(attrs.d));
+    } else if(tag === "rect"){
+      const rx = parseFloat(attrs.x)||0, ry = parseFloat(attrs.y)||0, rw = parseFloat(attrs.width)||0, rh = parseFloat(attrs.height)||0, rr = parseFloat(attrs.rx)||0;
+      if(rr>0) dibujarRectRedondeado(ctx, rx, ry, rw, rh, rr);
+      else{ ctx.beginPath(); ctx.rect(rx, ry, rw, rh); }
+      ctx.stroke();
+    } else if(tag === "circle"){
+      const cx = parseFloat(attrs.cx)||0, cy = parseFloat(attrs.cy)||0, r = parseFloat(attrs.r)||0;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI*2);
+      if(attrs.fill === "currentColor"){ ctx.fillStyle = color; ctx.fill(); }
+      else{ ctx.stroke(); }
+    }
+  }
+  ctx.restore();
+}
+
+function dibujarImagenEnCirculo(ctx, img, cx, cy, r){
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI*2);
+  ctx.closePath();
+  ctx.clip();
+  const s = Math.max((r*2)/img.width, (r*2)/img.height);
+  const w = img.width*s, h = img.height*s;
+  ctx.drawImage(img, cx - w/2, cy - h/2, w, h);
+  ctx.restore();
+}
+
+// Reduce el tamaño de fuente hasta que el texto quepa en maxWidth (sin pasar de tamMinimo).
+function ajustarFuenteParaAncho(ctx, texto, maxWidth, peso, tamInicial, tamMinimo){
+  let tam = tamInicial;
+  while(tam > tamMinimo){
+    ctx.font = `${peso} ${tam}px Arial, sans-serif`;
+    if(ctx.measureText(texto).width <= maxWidth) break;
+    tam -= 1;
+  }
+  ctx.font = `${peso} ${tam}px Arial, sans-serif`;
+  return tam;
+}
+
+// Corta el texto con "…" si sigue sin caber (con la fuente ya asignada en ctx).
+function truncarTexto(ctx, texto, maxWidth){
+  if(ctx.measureText(texto).width <= maxWidth) return texto;
+  let t = texto;
+  while(t.length > 1 && ctx.measureText(t+"…").width > maxWidth) t = t.slice(0,-1);
+  return t + "…";
+}
+
+function dibujarRectRedondeado(ctx, x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.arcTo(x+w, y, x+w, y+h, r);
+  ctx.arcTo(x+w, y+h, x, y+h, r);
+  ctx.arcTo(x, y+h, x, y, r);
+  ctx.arcTo(x, y, x+w, y, r);
+  ctx.closePath();
+}
+
+async function dibujarTarjetaPresentacion(canvas){
+  const p = state.perfil || {};
+  const W = 1000, H = 580, ESCALA = 2;
+  canvas.width = W*ESCALA;
+  canvas.height = H*ESCALA;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(ESCALA, ESCALA);
+
+  const [foto, logo] = await Promise.all([cargarImagenTarjeta(p.foto), cargarImagenTarjeta(p.negocioLogo)]);
+  if(!document.body.contains(canvas)) return; // el usuario navegó a otra pantalla mientras cargaban las imágenes
+
+  const grad = ctx.createLinearGradient(0,0,W,H);
+  grad.addColorStop(0,"#0B2A45");
+  grad.addColorStop(1,"#0E63B0");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,W,H);
+
+  ctx.save();
+  ctx.globalAlpha = 0.08;
+  ctx.fillStyle = "#FFFFFF";
+  ctx.beginPath(); ctx.arc(W-60, -40, 220, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(W-140, H+40, 170, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalAlpha = 0.10;
+  dibujarIconoEnCanvas(ctx, "snowflake", W-210, H-210, 160, "#FFFFFF", 1.3);
+  ctx.restore();
+
+  const padX = 56;
+
+  if(logo){
+    const logoSize = 92, lx = W - padX - logoSize, ly = 40;
+    ctx.save();
+    dibujarRectRedondeado(ctx, lx, ly, logoSize, logoSize, 18);
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    ctx.fill();
+    ctx.clip();
+    const s = Math.max(logoSize/logo.width, logoSize/logo.height);
+    const w = logo.width*s, h = logo.height*s;
+    ctx.drawImage(logo, lx + logoSize/2 - w/2, ly + logoSize/2 - h/2, w, h);
+    ctx.restore();
+  }
+
+  const avatarR = 62, avatarCx = padX + avatarR, avatarCy = 96;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(avatarCx, avatarCy, avatarR+4, 0, Math.PI*2);
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.fill();
+  ctx.restore();
+  if(foto){
+    dibujarImagenEnCirculo(ctx, foto, avatarCx, avatarCy, avatarR);
+  } else {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(avatarCx, avatarCy, avatarR, 0, Math.PI*2);
+    ctx.fillStyle = "#0E63B0";
+    ctx.fill();
+    ctx.restore();
+    dibujarIconoEnCanvas(ctx, "user", avatarCx-26, avatarCy-26, 52, "#FFFFFF", 2);
+  }
+
+  const textX = padX + avatarR*2 + 28;
+  const maxWidthTop = (logo ? (W - padX - 92 - 20) : (W - padX)) - textX;
+
+  const nombreTxt = p.nombre || "Técnico";
+  ctx.fillStyle = "#FFFFFF";
+  ajustarFuenteParaAncho(ctx, nombreTxt, maxWidthTop, "700", 34, 20);
+  ctx.fillText(truncarTexto(ctx, nombreTxt, maxWidthTop), textX, avatarCy - 6);
+
+  const negocioTxt = p.negocioNombre || "AiresCare";
+  ctx.fillStyle = "#8FD9C4";
+  ajustarFuenteParaAncho(ctx, negocioTxt, maxWidthTop, "600", 21, 14);
+  ctx.fillText(truncarTexto(ctx, negocioTxt, maxWidthTop), textX, avatarCy + 26);
+
+  ctx.fillStyle = "rgba(255,255,255,0.75)";
+  ctx.font = "400 16px Arial, sans-serif";
+  ctx.fillText(truncarTexto(ctx, "Mantenimiento de Aires Acondicionados", maxWidthTop), textX, avatarCy + 50);
+
+  const lineY = 210;
+  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(padX, lineY);
+  ctx.lineTo(W-padX, lineY);
+  ctx.stroke();
+
+  const filas = [];
+  if(p.telefono) filas.push({icon:"phone", texto: p.telefono});
+  if(p.correo) filas.push({icon:"mail", texto: p.correo});
+
+  let rowY = lineY + 56;
+  const iconBox = 34;
+  ctx.textBaseline = "middle";
+  filas.forEach(fila=>{
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(padX+iconBox/2, rowY, iconBox/2, 0, Math.PI*2);
+    ctx.fillStyle = "rgba(255,255,255,0.15)";
+    ctx.fill();
+    ctx.restore();
+    dibujarIconoEnCanvas(ctx, fila.icon, padX+iconBox/2-9, rowY-9, 18, "#FFFFFF", 2);
+    ctx.fillStyle = "#FFFFFF";
+    const rowTextX = padX+iconBox+16;
+    const maxWidthRow = (W-padX) - rowTextX;
+    ajustarFuenteParaAncho(ctx, fila.texto, maxWidthRow, "500", 20, 14);
+    ctx.fillText(truncarTexto(ctx, fila.texto, maxWidthRow), rowTextX, rowY+1);
+    rowY += 48;
+  });
+  ctx.textBaseline = "alphabetic";
+}
+
+function actualizarTarjetaCanvas(){
+  const canvas = document.getElementById("tarjeta-canvas");
+  if(!canvas) return;
+  dibujarTarjetaPresentacion(canvas).catch(()=>{});
+}
+
+function nombreArchivoTarjeta(){
+  const base = (state.perfil.negocioNombre || state.perfil.nombre || "AiresCare")
+    .replace(/[^a-zA-Z0-9]+/g,"-").toLowerCase().replace(/^-+|-+$/g,"");
+  return `tarjeta-${base || "airescare"}.png`;
+}
+
+function descargarBlob(blob, nombre){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nombre;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+}
+
+function obtenerBlobTarjeta(){
+  return new Promise((resolve)=>{
+    const canvas = document.getElementById("tarjeta-canvas");
+    if(!canvas){ resolve(null); return; }
+    canvas.toBlob(blob=>resolve(blob), "image/png");
+  });
+}
+
+async function compartirTarjetaWhatsApp(){
+  const blob = await obtenerBlobTarjeta();
+  if(!blob){ showToast("No se pudo generar la tarjeta"); return; }
+  const archivo = new File([blob], nombreArchivoTarjeta(), { type: "image/png" });
+  if(navigator.canShare && navigator.canShare({ files: [archivo] })){
+    try{
+      await navigator.share({ files: [archivo], title: "Tarjeta de presentación" });
+      return;
+    }catch(e){
+      if(e && e.name === "AbortError") return;
+    }
+  }
+  descargarBlob(blob, nombreArchivoTarjeta());
+  showToast("Imagen descargada. Ábrela en WhatsApp y adjúntala al chat.");
+}
+
+async function descargarTarjetaImagen(){
+  const blob = await obtenerBlobTarjeta();
+  if(!blob){ showToast("No se pudo generar la tarjeta"); return; }
+  descargarBlob(blob, nombreArchivoTarjeta());
+  showToast("Imagen descargada");
+}
+
 /* ---------- Render principal ---------- */
 function render(){
   const map = {
@@ -3839,6 +4149,7 @@ function render(){
     agenda: screenAgenda,
     consejos: screenConsejos,
     perfil: screenPerfil,
+    tarjeta: screenTarjeta,
     adminPanel: screenAdminPanel
   };
   const clienteVinculado = (state.modoCliente && state.usuario && state.usuario.vinculadoA) || state.previsualizarModoCliente;
@@ -3850,12 +4161,13 @@ function render(){
   updateMobileTopbarProfile();
   updateCampanitas();
   initMapPickerIfNeeded();
+  actualizarTarjetaCanvas();
 }
 
 function updateMobileTopbarProfile(){
   const btn = document.getElementById("mobileTopbarProfile");
   if(!btn) return;
-  const isActive = state.screen === "perfil";
+  const isActive = state.screen === "perfil" || state.screen === "tarjeta";
   btn.classList.toggle("active", isActive);
   const foto = state.modoCliente ? (state.usuario && state.usuario.foto) : (state.perfil && state.perfil.foto);
   if(foto){
@@ -3888,6 +4200,7 @@ function updateSidebarActive(){
     historial:"historial", editarHistorial:"historial", comprobante:"historial",
     consejos:"consejos",
     perfil:"perfil",
+    tarjeta:"perfil",
     contacto:"contacto",
     adminPanel:"adminPanel"
   }[state.screen] || "home";
