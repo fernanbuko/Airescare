@@ -3286,7 +3286,7 @@ function screenAgenda(){
             <button class="iconbtn" onclick="cambiarMesAgenda(-1)">${svg('chevronLeft',18,'var(--ink)')}</button>
             <label style="font-weight:800; font-size:14.5px; position:relative; cursor:pointer; padding:4px 8px;">
               ${MESES_ES[state.agendaMonth]} de ${state.agendaYear}
-              <input type="month" value="${state.agendaYear}-${String(state.agendaMonth+1).padStart(2,'0')}" onchange="irAMesAgenda(this.value)" style="position:absolute; inset:0; opacity:0; border:none; cursor:pointer;" />
+              <input type="month" value="${state.agendaYear}-${String(state.agendaMonth+1).padStart(2,'0')}" onchange="irAMesAgenda(this.value)" onclick="this.showPicker && this.showPicker()" style="position:absolute; inset:0; opacity:0; border:none; cursor:pointer;" />
             </label>
             <button class="iconbtn" onclick="cambiarMesAgenda(1)">${svg('chevronRight',18,'var(--ink)')}</button>
           </div>
