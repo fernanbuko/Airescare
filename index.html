@@ -1466,6 +1466,34 @@ function obtenerCoordenadasPicker(){
   return null;
 }
 
+// Ubica en el mapa la dirección que el usuario va escribiendo (con pausa para no
+// disparar una búsqueda por cada letra) usando el geocodificador de OpenStreetMap.
+let geocodeTimer = null;
+function onDireccionInput(prefix, valor){
+  clearTimeout(geocodeTimer);
+  const direccion = (valor||"").trim();
+  if(direccion.length < 6) return;
+  geocodeTimer = setTimeout(()=> geocodificarDireccion(prefix, direccion), 900);
+}
+
+async function geocodificarDireccion(prefix, direccion){
+  if(!(mapPicker.map && mapPicker.prefix === prefix)) return;
+  try{
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=ec&q=${encodeURIComponent(direccion)}`;
+    const res = await fetch(url, { headers: { "Accept-Language": "es" } });
+    if(!res.ok) return;
+    const resultados = await res.json();
+    if(!resultados.length) return;
+    if(!(mapPicker.map && mapPicker.prefix === prefix)) return; // el usuario cambió de pantalla mientras esperábamos la respuesta
+    const lat = Number(resultados[0].lat), lon = Number(resultados[0].lon);
+    mapPicker.map.setView([lat, lon], 16);
+    mapPicker.marker.setLatLng([lat, lon]);
+    mapPicker.touched = true;
+  }catch(e){
+    // sin conexión o el geocodificador no respondió: el usuario puede ubicar el pin a mano
+  }
+}
+
 function showToast(msg){
   const t = document.getElementById("toast");
   t.textContent = msg;
@@ -1520,6 +1548,12 @@ function showConfirm(message, onAccept, acceptLabel, acceptStyle, requiereTexto)
 
 /* ---------- Navegación ---------- */
 function go(screen, replace){
+  if(state.screen === "agenda" && screen !== "agenda"){
+    // Al salir de la agenda, que la próxima vez que se abra arranque en el mes y día actuales.
+    state.agendaYear = null;
+    state.agendaMonth = null;
+    state.agendaDiaSel = null;
+  }
   state.screen = screen;
   render();
   document.querySelector(".scroll") && (document.querySelector(".scroll").scrollTop = 0);
@@ -2408,11 +2442,11 @@ function screenAgregarCliente(){
         <input class="field-input" id="nc-telefono" type="tel" placeholder="Ej: 0991234567" />
 
         <label class="field-label">Dirección</label>
-        <input class="field-input" id="nc-direccion" type="text" placeholder="Ej: Av. Principal 123, Guayaquil" />
+        <input class="field-input" id="nc-direccion" type="text" placeholder="Ej: Av. Principal 123, Guayaquil" oninput="onDireccionInput('nc', this.value)" />
 
         <label class="field-label">Ubicación exacta (opcional)</label>
         <div class="map-picker" id="map-picker-nc"></div>
-        <div class="map-hint">Toca el mapa para colocar el pin exacto de la casa del cliente.</div>
+        <div class="map-hint">Se ubica sola al escribir la dirección. Toca el mapa para ajustar el pin exacto de la casa del cliente.</div>
         <button type="button" class="btn-outline" style="margin-top:8px; padding:9px 0; font-size:12.5px;" onclick="usarUbicacionActual('nc')">${svg('mapPin',14,'var(--primary)')} Usar mi ubicación actual</button>
 
         <div style="font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px; margin-top:24px;">Datos del equipo</div>
@@ -2534,11 +2568,11 @@ function screenEditarCliente(){
         <input class="field-input" id="ec-telefono" type="tel" value="${cli.telefono||""}" placeholder="Ej: 0991234567" />
 
         <label class="field-label">Dirección</label>
-        <input class="field-input" id="ec-direccion" type="text" value="${cli.direccion||""}" placeholder="Ej: Av. Principal 123, Guayaquil" />
+        <input class="field-input" id="ec-direccion" type="text" value="${cli.direccion||""}" placeholder="Ej: Av. Principal 123, Guayaquil" oninput="onDireccionInput('ec', this.value)" />
 
         <label class="field-label">Ubicación exacta (opcional)</label>
         <div class="map-picker" id="map-picker-ec"></div>
-        <div class="map-hint">Toca el mapa para ajustar el pin exacto de la casa del cliente.</div>
+        <div class="map-hint">Se ubica sola al escribir la dirección. Toca el mapa para ajustar el pin exacto de la casa del cliente.</div>
         <button type="button" class="btn-outline" style="margin-top:8px; padding:9px 0; font-size:12.5px;" onclick="usarUbicacionActual('ec')">${svg('mapPin',14,'var(--primary)')} Usar mi ubicación actual</button>
 
         <button class="btn-primary" style="margin-top:20px; margin-bottom:20px;" onclick="guardarEdicionCliente()">GUARDAR CAMBIOS</button>
@@ -3152,6 +3186,14 @@ function cambiarMesAgenda(delta){
   render();
 }
 
+function irAMesAgenda(valor){
+  if(!valor) return;
+  const [y, m] = valor.split("-").map(Number);
+  state.agendaYear = y;
+  state.agendaMonth = m-1;
+  render();
+}
+
 function seleccionarDiaAgenda(iso){
   state.agendaDiaSel = iso;
   render();
@@ -3242,7 +3284,10 @@ function screenAgenda(){
         <div class="card" style="padding:14px 10px;">
           <div style="display:flex; align-items:center; justify-content:space-between; padding:0 6px 10px;">
             <button class="iconbtn" onclick="cambiarMesAgenda(-1)">${svg('chevronLeft',18,'var(--ink)')}</button>
-            <span style="font-weight:800; font-size:14.5px;">${MESES_ES[state.agendaMonth]} de ${state.agendaYear}</span>
+            <label style="font-weight:800; font-size:14.5px; position:relative; cursor:pointer; padding:4px 8px;">
+              ${MESES_ES[state.agendaMonth]} de ${state.agendaYear}
+              <input type="month" value="${state.agendaYear}-${String(state.agendaMonth+1).padStart(2,'0')}" onchange="irAMesAgenda(this.value)" style="position:absolute; inset:0; opacity:0; border:none; cursor:pointer;" />
+            </label>
             <button class="iconbtn" onclick="cambiarMesAgenda(1)">${svg('chevronRight',18,'var(--ink)')}</button>
           </div>
           <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px; padding:0 2px 4px;">
@@ -4264,6 +4309,11 @@ history.replaceState({screen: state.screen}, "", "");
 
 window.addEventListener("popstate", (e) => {
   const targetScreen = (e.state && e.state.screen) ? e.state.screen : "home";
+  if(state.screen === "agenda" && targetScreen !== "agenda"){
+    state.agendaYear = null;
+    state.agendaMonth = null;
+    state.agendaDiaSel = null;
+  }
   state.screen = targetScreen;
   render();
   document.querySelector(".scroll") && (document.querySelector(".scroll").scrollTop = 0);
