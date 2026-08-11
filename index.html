@@ -509,6 +509,7 @@ function loadClientes(){
 // Guarda la lista de clientes tal cual (sin pasar por state.equipos) —
 // la usan la migración inicial y saveEquipos() más abajo.
 function saveClientesDirecto(clientes, subirNube){
+  if(state.modoInvitado) return; // el modo invitado no guarda nada, ni local ni en la nube
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(clientes)); }catch(e){}
   if(subirNube !== false) programarSubidaNube();
 }
@@ -582,6 +583,7 @@ function loadPerfil(){
   return { nombre: "", correo: "", telefono: "", foto: "", negocioNombre: "", negocioLogo: "", onboardingCompletado: false };
 }
 function savePerfil(perfil, subirNube){
+  if(state.modoInvitado) return; // el modo invitado no guarda nada, ni local ni en la nube
   try{ localStorage.setItem(PERFIL_KEY, JSON.stringify(perfil)); }catch(e){}
   if(subirNube !== false) programarSubidaNube();
 }
@@ -1036,11 +1038,81 @@ function iniciarSesionGoogle(){
 }
 
 function cerrarSesion(){
+  if(state.modoInvitado){ salirModoInvitado(); return; }
   showConfirm("¿Cerrar sesión? Tus datos siguen guardados en la nube con tu cuenta de Google, puedes volver a entrar cuando quieras.", () => {
     if(unsubscribeBloqueo){ unsubscribeBloqueo(); unsubscribeBloqueo = null; }
     try{ localStorage.removeItem(SESION_BACKUP_KEY); }catch(e){}
     auth.signOut();
   }, "Cerrar sesión", "primary");
+}
+
+// Modo invitado: deja explorar la app con datos de ejemplo, sin cuenta y
+// sin guardar nada (ni en la nube ni en este dispositivo). Se usa para que
+// alguien nuevo vea cómo funciona antes de decidirse a crear una cuenta.
+function entrarComoInvitado(){
+  const f = (dias) => {
+    const d = new Date();
+    d.setDate(d.getDate() + dias);
+    const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    return fechaISOaDMY(iso);
+  };
+
+  state.modoInvitado = true;
+  state.usuario = null;
+  state.perfil = {
+    nombre: "Técnico Demo",
+    correo: "",
+    telefono: "0999999999",
+    foto: "",
+    negocioNombre: "AiresCare Demo",
+    negocioLogo: "",
+    onboardingCompletado: true
+  };
+  state.clientes = [
+    {
+      id: 1,
+      nombre: "María Torres",
+      telefono: "0991234567",
+      direccion: "Av. Principal 123, Guayaquil",
+      lat: null, lng: null,
+      equipos: [{
+        id: 1, nombre: "Sala", marca: "LG Inverter 12k BTU", capacidad: "12,000 BTU",
+        instalado: f(-500), horasUso: 8, filtroLimpio: f(-20), tipoCompresor: "inverter",
+        estado: "Activo", ultimo: null, proximo: null,
+        historial: [
+          { id:"demo1", fecha: f(3), hora:"10:00", tipo:"Mantenimiento Preventivo", tecnico:"Sin asignar", precio:null, notas:"Sin notas.", realizado:false },
+          { id:"demo2", fecha: f(-180), hora:"", tipo:"Mantenimiento Preventivo", tecnico:"Técnico Demo", precio:25, notas:"Limpieza de filtros y revisión de gas.", realizado:true }
+        ]
+      }]
+    },
+    {
+      id: 2,
+      nombre: "Carlos Andrade",
+      telefono: "0987654321",
+      direccion: "Urdesa Central, Guayaquil",
+      lat: null, lng: null,
+      equipos: [{
+        id: 2, nombre: "Oficina", marca: "Samsung 18k BTU", capacidad: "18,000 BTU",
+        instalado: f(-800), horasUso: 10, filtroLimpio: null, tipoCompresor: "inverter",
+        estado: "Activo", ultimo: null, proximo: null,
+        historial: [
+          { id:"demo3", fecha: f(-2), hora:"", tipo:"Mantenimiento Preventivo", tecnico:"Sin asignar", precio:null, notas:"Sin notas.", realizado:false }
+        ]
+      }]
+    }
+  ];
+  state.clientes.forEach(cli => cli.equipos.forEach(recalcularFechasEquipo));
+  saveEquipos(null);
+  showToast("Estás en modo invitado: nada de esto se guarda");
+  go("home", true);
+}
+
+function salirModoInvitado(){
+  state.modoInvitado = false;
+  state.clientes = [];
+  state.equipos = [];
+  state.perfil = { nombre:"", correo:"", telefono:"", foto:"", negocioNombre:"", negocioLogo:"", onboardingCompletado:false };
+  go("login", true);
 }
 
 function confirmarEliminarMiCuenta(){
@@ -1242,7 +1314,8 @@ let state = {
   notifNoLeidas: 0,
   modoCliente: false,
   vistaCliente: null,
-  previsualizarModoCliente: false
+  previsualizarModoCliente: false,
+  modoInvitado: false
 };
 state.equipos = flattenClientes(state.clientes);
 
@@ -1812,7 +1885,10 @@ function screenLogin(){
           <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.4 0 6.4 1.2 8.8 3.5l6.6-6.6C35.3 2.5 30 0 24 0 14.6 0 6.5 5.4 2.5 13.2l7.7 6C12.1 13.1 17.6 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.9 7.2l7.5 5.8c4.4-4 6.9-10 6.9-17.5z"/><path fill="#FBBC05" d="M10.2 19.2A14.5 14.5 0 0 0 9.5 24c0 1.7.3 3.3.8 4.8l-7.7 6A24 24 0 0 1 0 24c0-3.9.9-7.5 2.6-10.8l7.6 6z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.8 2.3-8.4 2.3-6.4 0-11.9-3.6-13.8-8.9l-7.7 6C6.5 42.6 14.6 48 24 48z"/></svg>
           Continuar con Google
         </button>
-        <div style="font-size:11px; color:var(--ink-soft); margin-top:22px; line-height:1.5;">
+        <button onclick="entrarComoInvitado()" style="margin-top:14px; background:none; border:none; padding:6px; font-size:13px; font-weight:700; color:var(--primary); cursor:pointer;">
+          Probar sin crear cuenta
+        </button>
+        <div style="font-size:11px; color:var(--ink-soft); margin-top:18px; line-height:1.5;">
           Tus datos quedan asociados a tu cuenta de Google y solo tú puedes verlos.
         </div>
       </div>
@@ -2221,6 +2297,18 @@ function screenPerfilCliente(){
     </div>`;
 }
 
+function bannerInvitado(){
+  if(!state.modoInvitado) return "";
+  return `
+    <div class="card" style="margin-top:18px; background:#FDF3E3; border-color:#F3DFAE; display:flex; align-items:center; gap:12px;">
+      <div style="flex:1;">
+        <div style="font-weight:700; font-size:13px;">Estás probando el modo invitado</div>
+        <div style="font-size:11.5px; color:var(--ink-soft); margin-top:2px; line-height:1.4;">Es una demo con datos de ejemplo — nada de esto se guarda.</div>
+      </div>
+      <button onclick="salirModoInvitado()" style="background:var(--primary); color:#fff; border:none; border-radius:8px; padding:8px 12px; font-size:11.5px; font-weight:700; cursor:pointer; white-space:nowrap;">Crear cuenta</button>
+    </div>`;
+}
+
 function screenHome(){
   const eqs = state.equipos;
 
@@ -2232,6 +2320,7 @@ function screenHome(){
           <div style="font-size:13.5px; color:var(--ink-soft); margin-top:4px; line-height:1.4;">
             Registra tu primer aire acondicionado para empezar a recibir recordatorios de mantenimiento.
           </div>
+          ${bannerInvitado()}
           <div style="margin-top:22px; width:100%; display:flex; align-items:center; justify-content:center;">
             ${acHero(230)}
           </div>
@@ -2265,6 +2354,7 @@ function screenHome(){
         <div style="font-size:13.5px; color:var(--ink-soft); margin-top:4px; line-height:1.4;">
           Tus aires, siempre en las mejores condiciones.
         </div>
+        ${bannerInvitado()}
         <div style="margin-top:22px; width:100%; display:flex; align-items:center; justify-content:center;">
           ${acHero(230)}
         </div>
@@ -2619,6 +2709,7 @@ function generarCodigoAcceso(){
 }
 
 async function compartirAccesoCliente(clienteId){
+  if(state.modoInvitado){ showToast("Crea una cuenta gratis para compartir acceso con tus clientes"); return; }
   const cli = state.clientes.find(c=>c.id===clienteId);
   if(!cli) return;
   if(!cli.codigoAcceso){
@@ -3769,6 +3860,19 @@ function screenPerfil(){
 
         <div style="margin-top:22px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Cuenta</div>
         <div class="card" style="margin-top:8px;">
+          ${state.modoInvitado ? `
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div style="width:44px;height:44px;border-radius:999px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center;">${svg('user',22,'#0E63B0')}</div>
+            <div>
+              <div style="font-weight:700; font-size:14px;">Modo invitado</div>
+              <div style="font-size:12px; color:var(--ink-soft);">Nada de esto se guarda</div>
+            </div>
+          </div>
+          <div style="font-size:12.5px; color:var(--ink-soft); margin-top:14px; line-height:1.4;">
+            Crea una cuenta gratis con tu Google para guardar de verdad tus clientes y equipos.
+          </div>
+          <button class="btn-primary" style="margin-top:12px;" onclick="salirModoInvitado()">CREAR CUENTA GRATIS</button>
+          ` : `
           <div style="display:flex; align-items:center; gap:12px;">
             ${state.usuario.foto ? `<img src="${state.usuario.foto}" width="44" height="44" style="border-radius:999px; object-fit:cover;" alt="" />` : `<div style="width:44px;height:44px;border-radius:999px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center;">${svg('user',22,'#0E63B0')}</div>`}
             <div>
@@ -3784,8 +3888,10 @@ function screenPerfil(){
           </div>
           <button class="btn-outline" style="margin-top:12px;" onclick="sincronizarDesdeNube()">SINCRONIZAR AHORA</button>
           <button style="width:100%; background:none; border:none; margin-top:10px; padding:6px; text-align:center; font-size:12.5px; color:#D64545; font-weight:700; cursor:pointer;" onclick="cerrarSesion()">Cerrar sesión</button>
+          `}
         </div>
 
+        ${state.modoInvitado ? "" : `
         <div style="margin-top:22px; font-size:12px; font-weight:700; color:#D64545; text-transform:uppercase; letter-spacing:.4px;">Zona de peligro</div>
         <div class="card" style="margin-top:8px; border-color:#F3C6C6;">
           <div style="font-size:12.5px; color:var(--ink-soft); line-height:1.5;">
@@ -3793,6 +3899,7 @@ function screenPerfil(){
           </div>
           <button class="btn-outline" style="margin-top:12px; border-color:#D64545; color:#D64545;" onclick="confirmarEliminarMiCuenta()">ELIMINAR MI CUENTA</button>
         </div>
+        `}
 
         <div style="margin-top:22px; font-size:12px; font-weight:700; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px;">Datos personales</div>
         <div class="card" style="margin-top:8px;">
