@@ -251,6 +251,12 @@
   }
   .chip-warn{ background:#FBE9D2; color:#B4700C; }
   [data-theme="dark"] .chip-warn{ background:#3A2A10; color:#F0B559; }
+  .banner-invitado{ background:#FDF3E3; border-color:#F3DFAE; }
+  .banner-invitado .bi-titulo{ color:#4A3B12; }
+  .banner-invitado .bi-sub{ color:#8A7550; }
+  [data-theme="dark"] .banner-invitado{ background:#3A2A10; border-color:#5A4420; }
+  [data-theme="dark"] .banner-invitado .bi-titulo{ color:#F0B559; }
+  [data-theme="dark"] .banner-invitado .bi-sub{ color:#D9B87A; }
   [data-theme="dark"] #mobileTopbarBell svg,
   [data-theme="dark"] #desktopTopbarBell svg{ stroke:var(--ink); }
   .toggle-switch{
@@ -2300,12 +2306,15 @@ function screenPerfilCliente(){
 function bannerInvitado(){
   if(!state.modoInvitado) return "";
   return `
-    <div class="card" style="margin-top:18px; background:#FDF3E3; border-color:#F3DFAE; display:flex; align-items:center; gap:12px;">
-      <div style="flex:1;">
-        <div style="font-weight:700; font-size:13px;">Estás probando el modo invitado</div>
-        <div style="font-size:11.5px; color:var(--ink-soft); margin-top:2px; line-height:1.4;">Es una demo con datos de ejemplo — nada de esto se guarda.</div>
+    <div class="card banner-invitado" style="margin-top:18px; display:flex; flex-wrap:wrap; align-items:center; gap:12px;">
+      <div style="flex:1; min-width:160px;">
+        <div class="bi-titulo" style="font-weight:700; font-size:13px;">Estás probando el modo invitado</div>
+        <div class="bi-sub" style="font-size:11.5px; margin-top:2px; line-height:1.4;">Es una demo con datos de ejemplo — nada de esto se guarda.</div>
       </div>
-      <button onclick="salirModoInvitado()" style="background:var(--primary); color:#fff; border:none; border-radius:8px; padding:8px 12px; font-size:11.5px; font-weight:700; cursor:pointer; white-space:nowrap;">Crear cuenta</button>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button onclick="salirModoInvitado()" style="background:none; color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:8px 12px; font-size:11.5px; font-weight:700; cursor:pointer; white-space:nowrap;">Salir de la demo</button>
+        <button onclick="salirModoInvitado()" style="background:var(--primary); color:#fff; border:none; border-radius:8px; padding:8px 12px; font-size:11.5px; font-weight:700; cursor:pointer; white-space:nowrap;">Crear cuenta</button>
+      </div>
     </div>`;
 }
 
@@ -3872,6 +3881,7 @@ function screenPerfil(){
             Crea una cuenta gratis con tu Google para guardar de verdad tus clientes y equipos.
           </div>
           <button class="btn-primary" style="margin-top:12px;" onclick="salirModoInvitado()">CREAR CUENTA GRATIS</button>
+          <button class="btn-outline" style="margin-top:8px;" onclick="salirModoInvitado()">SALIR DE LA DEMO</button>
           ` : `
           <div style="display:flex; align-items:center; gap:12px;">
             ${state.usuario.foto ? `<img src="${state.usuario.foto}" width="44" height="44" style="border-radius:999px; object-fit:cover;" alt="" />` : `<div style="width:44px;height:44px;border-radius:999px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center;">${svg('user',22,'#0E63B0')}</div>`}
