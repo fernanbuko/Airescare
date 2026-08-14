@@ -485,12 +485,15 @@ async function enviarAvisos(uid, avisos) {
   const tokensSnap = await db.collection("usuarios").doc(uid).collection("tokens").get();
   const tokens = tokensSnap.docs.map((t) => t.id);
 
-  const notifSnap = await db.collection("usuarios").doc(uid).collection("notificaciones").get();
-  const yaNotificado = new Set(notifSnap.docs.map((d) => d.id));
+  const notifRef = db.collection("usuarios").doc(uid).collection("notificaciones");
+  const notifSnap = await notifRef.get();
+  const registrados = new Map(notifSnap.docs.map((d) => [d.id, d.data()]));
 
   let enviadas = 0;
   for (const { eq, clave, titulo, esFiltro, diasFiltro, hora } of avisos) {
-    if (yaNotificado.has(clave)) continue;
+    const existente = registrados.get(clave);
+    // Si ya se le mando el push con exito antes, no hay nada mas que hacer.
+    if (existente && existente.pushEnviado) continue;
 
     const cuerpo = esFiltro
       ? (diasFiltro >= FILTRO_FRECUENCIA_DIAS
@@ -500,24 +503,40 @@ async function enviarAvisos(uid, avisos) {
         ? `Cliente: ${eq.cliente}${eq.marca ? " · " + eq.marca : ""}${hora ? " · " + hora : ""}`
         : (eq.marca || "Revisa el detalle en la app"));
 
+    // Ojo: sendEachForMulticast no lanza error si un token individual
+    // esta vencido/invalido -- eso viene reportado dentro de la respuesta,
+    // no como excepcion. Por eso se revisa successCount en vez de asumir
+    // que "no hubo error" significa "se entrego".
+    let pushEnviado = false;
     if (tokens.length > 0) {
       try {
-        await admin.messaging().sendEachForMulticast({
+        const respuesta = await admin.messaging().sendEachForMulticast({
           tokens,
           data: { title: titulo, body: cuerpo, tag: clave, url: "./" },
         });
+        pushEnviado = respuesta.successCount > 0;
       } catch (e) {
         console.error(`Error enviando push a ${uid}:`, e.message);
       }
     }
 
+    if (existente) {
+      // Ya estaba guardada para verse en el historial de la app; solo
+      // faltaba lograr entregar el push, asi que no se duplica el registro.
+      if (pushEnviado) {
+        try { await notifRef.doc(clave).update({ pushEnviado: true }); } catch (e) {}
+      }
+      continue;
+    }
+
     try {
-      await db.collection("usuarios").doc(uid).collection("notificaciones").doc(clave).set({
+      await notifRef.doc(clave).set({
         titulo,
         cuerpo,
         equipoId: eq.id,
         creada: admin.firestore.FieldValue.serverTimestamp(),
         leida: false,
+        pushEnviado,
       });
       enviadas++;
     } catch (e) {
