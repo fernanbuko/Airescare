@@ -10,6 +10,10 @@ on:
 jobs:
   enviar-notificaciones:
     runs-on: ubuntu-latest
+    # Corre en segundos normalmente; si algo se queda pegado (ej. un bache
+    # de conexión con Firebase), que falle rápido y claro a los 5 minutos
+    # en vez de quedarse colgado ~15 minutos antes de que GitHub lo cancele.
+    timeout-minutes: 5
     steps:
       - name: Descargar el repositorio
         uses: actions/checkout@v4
