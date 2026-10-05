@@ -8,9 +8,20 @@ on:
     - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
+# Evita que se amontonen corridas nuevas mientras una anterior sigue
+# atascada (este workflow se dispara cada 1-2 minutos) -- la nueva espera
+# en cola a que termine la actual, en vez de correr en paralelo.
+concurrency:
+  group: vincular-clientes
+  cancel-in-progress: false
+
 jobs:
   vincular:
     runs-on: ubuntu-latest
+    # Corre en segundos normalmente; si algo se queda pegado (ej. un bache
+    # de conexión con Firebase), que falle rápido y claro en vez de
+    # quedarse colgado mucho tiempo.
+    timeout-minutes: 3
     steps:
       - name: Descargar el repositorio
         uses: actions/checkout@v4
